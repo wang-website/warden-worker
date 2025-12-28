@@ -9,6 +9,7 @@ mod error;
 mod handlers;
 mod models;
 mod router;
+mod utils;
 
 #[event(fetch)]
 pub async fn main(

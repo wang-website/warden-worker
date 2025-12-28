@@ -12,6 +12,14 @@ Warden aims to solve this problem by leveraging the Cloudflare Workers ecosystem
 
 *   **Core Vault Functionality:** All your basic vault operations are supported, including creating, reading, updating, and deleting ciphers and folders.
 *   **TOTP Support:** Store and generate Time-based One-Time Passwords for your accounts.
+*   **Soft Delete & Restore:** Deleted items can be restored before permanent deletion.
+*   **Account Management:** Change password and delete account functionality.
+*   **Security Features:** 
+    *   PBKDF2-SHA256 key derivation with configurable iterations
+    *   Constant-time password comparison to prevent timing attacks
+    *   JWT-based authentication with access and refresh tokens
+    *   Input validation and SQL injection protection
+    *   Security stamp invalidation on password change
 *   **Bitwarden Compatible:** Works with the official Bitwarden browser extensions and Android app (iOS is untested).
 *   **Free to Host:** Runs on Cloudflare's free tier.
 *   **Low Maintenance:** Deploy it once and forget about it.
@@ -20,14 +28,30 @@ Warden aims to solve this problem by leveraging the Cloudflare Workers ecosystem
 
 ## Current Status
 
-**This project is not yet feature-complete.** It currently supports the core functionality of a personal vault, including TOTP. However, it does **not** support the following features:
+This project supports the core functionality of a personal password vault. Recent improvements include:
 
-*   Sharing
+*   ✅ User registration and authentication
+*   ✅ Cipher CRUD operations (Create, Read, Update, Delete)
+*   ✅ Soft delete and restore for ciphers
+*   ✅ Folder management
+*   ✅ Data import/export
+*   ✅ TOTP support
+*   ✅ Password change functionality
+*   ✅ Account deletion
+*   ✅ Profile and revision date endpoints
+*   ✅ Security improvements (input validation, timing attack prevention)
+
+**Not yet supported:**
+
+*   Sharing and Organizations
 *   Bitwarden Send
-*   Organizations
-*   Other Bitwarden advanced features
+*   Attachments
+*   Two-factor authentication (2FA)
+*   Email verification
+*   Rate limiting
+*   Advanced organization features
 
-There are no immediate plans to implement these features. The primary goal of this project is to provide a simple, free, and low-maintenance personal password manager.
+There are no immediate plans to implement organization and sharing features. The primary goal of this project is to provide a simple, free, and low-maintenance personal password manager.
 
 ## Compatibility
 

@@ -1,5 +1,4 @@
 use axum::{extract::State, Json};
-use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 use worker::{query, Env};
@@ -8,6 +7,7 @@ use crate::auth::Claims;
 use crate::db;
 use crate::error::AppError;
 use crate::models::cipher::{Cipher, CipherData, CipherRequestData, CreateCipherRequest};
+use crate::utils;
 use axum::extract::Path;
 
 #[worker::send]
@@ -17,8 +17,7 @@ pub async fn create_cipher(
     Json(payload): Json<CreateCipherRequest>,
 ) -> Result<Json<Cipher>, AppError> {
     let db = db::get_db(&env)?;
-    let now = Utc::now();
-    let now = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let now = utils::now_timestamp();
     let cipher_data_req = payload.cipher;
 
     let cipher_data = CipherData {
@@ -88,8 +87,7 @@ pub async fn update_cipher(
     Json(payload): Json<CipherRequestData>,
 ) -> Result<Json<Cipher>, AppError> {
     let db = db::get_db(&env)?;
-    let now = Utc::now();
-    let now = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let now = utils::now_timestamp();
 
     let existing_cipher: crate::models::cipher::CipherDBModel = query!(
         &db,
@@ -157,14 +155,97 @@ pub async fn update_cipher(
 }
 
 #[worker::send]
+pub async fn get_cipher(
+    claims: Claims,
+    State(env): State<Arc<Env>>,
+    Path(id): Path<String>,
+) -> Result<Json<Cipher>, AppError> {
+    let db = db::get_db(&env)?;
+
+    let cipher: crate::models::cipher::CipherDBModel = query!(
+        &db,
+        "SELECT * FROM ciphers WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL",
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .first(None)
+    .await?
+    .ok_or(AppError::NotFound("Cipher not found".to_string()))?;
+
+    Ok(Json(cipher.into()))
+}
+
+#[worker::send]
 pub async fn delete_cipher(
     claims: Claims,
     State(env): State<Arc<Env>>,
     Path(id): Path<String>,
 ) -> Result<Json<()>, AppError> {
     let db = db::get_db(&env)?;
+    let now = utils::now_timestamp();
 
-    let res = query!(
+    // Soft delete - set deleted_at timestamp
+    query!(
+        &db,
+        "UPDATE ciphers SET deleted_at = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4",
+        now.clone(),
+        now,
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .run()
+    .await?;
+
+    Ok(Json(()))
+}
+
+#[worker::send]
+pub async fn restore_cipher(
+    claims: Claims,
+    State(env): State<Arc<Env>>,
+    Path(id): Path<String>,
+) -> Result<Json<Cipher>, AppError> {
+    let db = db::get_db(&env)?;
+    let now = utils::now_timestamp();
+
+    // Restore by clearing deleted_at
+    query!(
+        &db,
+        "UPDATE ciphers SET deleted_at = NULL, updated_at = ?1 WHERE id = ?2 AND user_id = ?3",
+        now,
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .run()
+    .await?;
+
+    let cipher: crate::models::cipher::CipherDBModel = query!(
+        &db,
+        "SELECT * FROM ciphers WHERE id = ?1 AND user_id = ?2",
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .first(None)
+    .await?
+    .ok_or(AppError::NotFound("Cipher not found".to_string()))?;
+
+    Ok(Json(cipher.into()))
+}
+
+#[worker::send]
+pub async fn hard_delete_cipher(
+    claims: Claims,
+    State(env): State<Arc<Env>>,
+    Path(id): Path<String>,
+) -> Result<Json<()>, AppError> {
+    let db = db::get_db(&env)?;
+
+    // Permanently delete
+    query!(
         &db,
         "DELETE FROM ciphers WHERE id = ?1 AND user_id = ?2",
         id,
@@ -175,4 +256,123 @@ pub async fn delete_cipher(
     .await?;
 
     Ok(Json(()))
+}
+
+/// Toggle cipher favorite status
+#[worker::send]
+pub async fn toggle_favorite(
+    claims: Claims,
+    State(env): State<Arc<Env>>,
+    Path(id): Path<String>,
+) -> Result<Json<Cipher>, AppError> {
+    let db = db::get_db(&env)?;
+    let now = utils::now_timestamp();
+
+    // Get current cipher (only non-deleted)
+    let cipher: crate::models::cipher::CipherDBModel = query!(
+        &db,
+        "SELECT * FROM ciphers WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL",
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .first(None)
+    .await?
+    .ok_or(AppError::NotFound("Cipher not found".to_string()))?;
+
+    // Toggle favorite
+    let new_favorite = !cipher.favorite;
+    
+    query!(
+        &db,
+        "UPDATE ciphers SET favorite = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4",
+        new_favorite,
+        now,
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .run()
+    .await?;
+
+    // Fetch updated cipher
+    let updated_cipher: crate::models::cipher::CipherDBModel = query!(
+        &db,
+        "SELECT * FROM ciphers WHERE id = ?1 AND user_id = ?2",
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .first(None)
+    .await?
+    .ok_or(AppError::NotFound("Cipher not found".to_string()))?;
+
+    Ok(Json(updated_cipher.into()))
+}
+
+/// Move cipher to folder
+#[worker::send]
+pub async fn move_to_folder(
+    claims: Claims,
+    State(env): State<Arc<Env>>,
+    Path(id): Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<Cipher>, AppError> {
+    let db = db::get_db(&env)?;
+    let now = utils::now_timestamp();
+
+    let folder_id = payload["folderId"].as_str();
+
+    // Verify cipher exists (only non-deleted)
+    let _: crate::models::cipher::CipherDBModel = query!(
+        &db,
+        "SELECT * FROM ciphers WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL",
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .first(None)
+    .await?
+    .ok_or(AppError::NotFound("Cipher not found".to_string()))?;
+
+    // If folder_id is provided, verify it exists and belongs to user
+    if let Some(fid) = folder_id {
+        let _folder: crate::models::folder::Folder = query!(
+            &db,
+            "SELECT * FROM folders WHERE id = ?1 AND user_id = ?2",
+            fid,
+            claims.sub
+        )
+        .map_err(|_| AppError::Database)?
+        .first(None)
+        .await?
+        .ok_or(AppError::NotFound("Folder not found".to_string()))?;
+    }
+
+    // Update cipher folder
+    query!(
+        &db,
+        "UPDATE ciphers SET folder_id = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4",
+        folder_id,
+        now,
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .run()
+    .await?;
+
+    // Fetch updated cipher
+    let updated_cipher: crate::models::cipher::CipherDBModel = query!(
+        &db,
+        "SELECT * FROM ciphers WHERE id = ?1 AND user_id = ?2",
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .first(None)
+    .await?
+    .ok_or(AppError::NotFound("Cipher not found".to_string()))?;
+
+    Ok(Json(updated_cipher.into()))
 }

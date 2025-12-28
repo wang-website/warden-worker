@@ -1,5 +1,4 @@
 use axum::{extract::State, Json};
-use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 use worker::{query, Env};
@@ -8,6 +7,7 @@ use crate::auth::Claims;
 use crate::db;
 use crate::error::AppError;
 use crate::models::folder::{CreateFolderRequest, Folder, FolderResponse};
+use crate::utils;
 use axum::extract::Path;
 
 #[worker::send]
@@ -17,8 +17,7 @@ pub async fn create_folder(
     Json(payload): Json<CreateFolderRequest>,
 ) -> Result<Json<FolderResponse>, AppError> {
     let db = db::get_db(&env)?;
-    let now = Utc::now();
-    let now = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let now = utils::now_timestamp();
 
     let folder = Folder {
         id: Uuid::new_v4().to_string(),
@@ -79,8 +78,7 @@ pub async fn update_folder(
     Json(payload): Json<CreateFolderRequest>,
 ) -> Result<Json<FolderResponse>, AppError> {
     let db = db::get_db(&env)?;
-    let now = Utc::now();
-    let now = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let now = utils::now_timestamp();
 
     let existing_folder: Folder = query!(
         &db,

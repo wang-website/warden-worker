@@ -1,5 +1,4 @@
 use axum::{extract::State, Json};
-use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 use worker::{query, Env};
@@ -10,6 +9,7 @@ use crate::error::AppError;
 use crate::models::cipher::{Cipher, CipherData};
 use crate::models::folder::Folder;
 use crate::models::import::ImportRequest;
+use crate::utils;
 
 #[worker::send]
 pub async fn import_data(
@@ -18,8 +18,7 @@ pub async fn import_data(
     Json(mut payload): Json<ImportRequest>,
 ) -> Result<Json<()>, AppError> {
     let db = db::get_db(&env)?;
-    let now = Utc::now();
-    let now = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let now = utils::now_timestamp();
 
     for import_folder in &payload.folders {
         let folder = Folder {
