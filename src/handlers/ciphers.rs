@@ -1,5 +1,4 @@
 use axum::{extract::State, Json};
-use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 use worker::{query, Env};
@@ -8,6 +7,7 @@ use crate::auth::Claims;
 use crate::db;
 use crate::error::AppError;
 use crate::models::cipher::{Cipher, CipherData, CipherRequestData, CreateCipherRequest};
+use crate::utils;
 use axum::extract::Path;
 
 #[worker::send]
@@ -17,8 +17,7 @@ pub async fn create_cipher(
     Json(payload): Json<CreateCipherRequest>,
 ) -> Result<Json<Cipher>, AppError> {
     let db = db::get_db(&env)?;
-    let now = Utc::now();
-    let now = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let now = utils::now_timestamp();
     let cipher_data_req = payload.cipher;
 
     let cipher_data = CipherData {
@@ -88,8 +87,7 @@ pub async fn update_cipher(
     Json(payload): Json<CipherRequestData>,
 ) -> Result<Json<Cipher>, AppError> {
     let db = db::get_db(&env)?;
-    let now = Utc::now();
-    let now = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let now = utils::now_timestamp();
 
     let existing_cipher: crate::models::cipher::CipherDBModel = query!(
         &db,
@@ -185,8 +183,7 @@ pub async fn delete_cipher(
     Path(id): Path<String>,
 ) -> Result<Json<()>, AppError> {
     let db = db::get_db(&env)?;
-    let now = Utc::now();
-    let now = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let now = utils::now_timestamp();
 
     // Soft delete - set deleted_at timestamp
     query!(
@@ -211,8 +208,7 @@ pub async fn restore_cipher(
     Path(id): Path<String>,
 ) -> Result<Json<Cipher>, AppError> {
     let db = db::get_db(&env)?;
-    let now = Utc::now();
-    let now = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let now = utils::now_timestamp();
 
     // Restore by clearing deleted_at
     query!(
@@ -270,13 +266,12 @@ pub async fn toggle_favorite(
     Path(id): Path<String>,
 ) -> Result<Json<Cipher>, AppError> {
     let db = db::get_db(&env)?;
-    let now = Utc::now();
-    let now = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let now = utils::now_timestamp();
 
-    // Get current cipher
+    // Get current cipher (only non-deleted)
     let cipher: crate::models::cipher::CipherDBModel = query!(
         &db,
-        "SELECT * FROM ciphers WHERE id = ?1 AND user_id = ?2",
+        "SELECT * FROM ciphers WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL",
         id,
         claims.sub
     )
@@ -324,15 +319,14 @@ pub async fn move_to_folder(
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<Cipher>, AppError> {
     let db = db::get_db(&env)?;
-    let now = Utc::now();
-    let now = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let now = utils::now_timestamp();
 
     let folder_id = payload["folderId"].as_str();
 
-    // Verify cipher exists
+    // Verify cipher exists (only non-deleted)
     let _: crate::models::cipher::CipherDBModel = query!(
         &db,
-        "SELECT * FROM ciphers WHERE id = ?1 AND user_id = ?2",
+        "SELECT * FROM ciphers WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL",
         id,
         claims.sub
     )

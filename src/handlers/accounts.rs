@@ -12,9 +12,61 @@ use crate::{
     models::user::{PreloginResponse, RegisterRequest, User},
 };
 
-// Email validation helper
+// Email validation helper - more thorough validation
 fn is_valid_email(email: &str) -> bool {
-    email.contains('@') && email.len() > 3 && email.len() < 255
+    // Basic checks
+    if email.len() < 3 || email.len() > 254 {
+        return false;
+    }
+    
+    // Must contain exactly one @ symbol
+    let at_count = email.matches('@').count();
+    if at_count != 1 {
+        return false;
+    }
+    
+    // Split into local and domain parts
+    let parts: Vec<&str> = email.split('@').collect();
+    if parts.len() != 2 {
+        return false;
+    }
+    
+    let local = parts[0];
+    let domain = parts[1];
+    
+    // Validate local part
+    if local.is_empty() || local.len() > 64 {
+        return false;
+    }
+    
+    // Validate domain part
+    if domain.is_empty() || domain.len() < 3 {
+        return false;
+    }
+    
+    // Domain must contain at least one dot
+    if !domain.contains('.') {
+        return false;
+    }
+    
+    // Basic character validation
+    let valid_chars = |c: char| c.is_alphanumeric() || c == '.' || c == '-' || c == '_' || c == '+';
+    if !local.chars().all(valid_chars) {
+        return false;
+    }
+    
+    let domain_valid_chars = |c: char| c.is_alphanumeric() || c == '.' || c == '-';
+    if !domain.chars().all(domain_valid_chars) {
+        return false;
+    }
+    
+    // Domain can't start or end with dot or dash
+    if domain.starts_with('.') || domain.ends_with('.') 
+        || domain.starts_with('-') || domain.ends_with('-') {
+        return false;
+    }
+    
+    true
 }
 
 // Validate KDF iterations are within reasonable bounds
