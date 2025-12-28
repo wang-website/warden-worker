@@ -5,12 +5,15 @@ use axum::{
 use std::sync::Arc;
 use worker::Env;
 
-use crate::handlers::{accounts, ciphers, config, identity, sync, folders, import};
+use crate::handlers::{accounts, ciphers, config, identity, sync, folders, import, health};
 
 pub fn api_router(env: Env) -> Router {
     let app_state = Arc::new(env);
 
     Router::new()
+        // Health check endpoints
+        .route("/health", get(health::health))
+        .route("/alive", get(health::alive))
         // Identity/Auth routes
         .route("/identity/accounts/prelogin", post(accounts::prelogin))
         .route(
@@ -37,6 +40,8 @@ pub fn api_router(env: Env) -> Router {
         .route("/api/ciphers/{id}/delete", post(ciphers::delete_cipher))
         .route("/api/ciphers/{id}/restore", put(ciphers::restore_cipher))
         .route("/api/ciphers/{id}/delete-admin", delete(ciphers::hard_delete_cipher))
+        .route("/api/ciphers/{id}/favorite", put(ciphers::toggle_favorite))
+        .route("/api/ciphers/{id}/move", post(ciphers::move_to_folder))
         // Folders CRUD
         .route("/api/folders", post(folders::create_folder))
         .route("/api/folders/{id}", put(folders::update_folder))
