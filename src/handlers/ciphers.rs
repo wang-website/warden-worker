@@ -157,14 +157,99 @@ pub async fn update_cipher(
 }
 
 #[worker::send]
+pub async fn get_cipher(
+    claims: Claims,
+    State(env): State<Arc<Env>>,
+    Path(id): Path<String>,
+) -> Result<Json<Cipher>, AppError> {
+    let db = db::get_db(&env)?;
+
+    let cipher: crate::models::cipher::CipherDBModel = query!(
+        &db,
+        "SELECT * FROM ciphers WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL",
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .first(None)
+    .await?
+    .ok_or(AppError::NotFound("Cipher not found".to_string()))?;
+
+    Ok(Json(cipher.into()))
+}
+
+#[worker::send]
 pub async fn delete_cipher(
     claims: Claims,
     State(env): State<Arc<Env>>,
     Path(id): Path<String>,
 ) -> Result<Json<()>, AppError> {
     let db = db::get_db(&env)?;
+    let now = Utc::now();
+    let now = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
 
-    let res = query!(
+    // Soft delete - set deleted_at timestamp
+    query!(
+        &db,
+        "UPDATE ciphers SET deleted_at = ?1, updated_at = ?2 WHERE id = ?3 AND user_id = ?4",
+        now.clone(),
+        now,
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .run()
+    .await?;
+
+    Ok(Json(()))
+}
+
+#[worker::send]
+pub async fn restore_cipher(
+    claims: Claims,
+    State(env): State<Arc<Env>>,
+    Path(id): Path<String>,
+) -> Result<Json<Cipher>, AppError> {
+    let db = db::get_db(&env)?;
+    let now = Utc::now();
+    let now = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+
+    // Restore by clearing deleted_at
+    query!(
+        &db,
+        "UPDATE ciphers SET deleted_at = NULL, updated_at = ?1 WHERE id = ?2 AND user_id = ?3",
+        now,
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .run()
+    .await?;
+
+    let cipher: crate::models::cipher::CipherDBModel = query!(
+        &db,
+        "SELECT * FROM ciphers WHERE id = ?1 AND user_id = ?2",
+        id,
+        claims.sub
+    )
+    .map_err(|_| AppError::Database)?
+    .first(None)
+    .await?
+    .ok_or(AppError::NotFound("Cipher not found".to_string()))?;
+
+    Ok(Json(cipher.into()))
+}
+
+#[worker::send]
+pub async fn hard_delete_cipher(
+    claims: Claims,
+    State(env): State<Arc<Env>>,
+    Path(id): Path<String>,
+) -> Result<Json<()>, AppError> {
+    let db = db::get_db(&env)?;
+
+    // Permanently delete
+    query!(
         &db,
         "DELETE FROM ciphers WHERE id = ?1 AND user_id = ?2",
         id,

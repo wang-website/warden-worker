@@ -41,9 +41,9 @@ pub async fn get_sync_data(
 
     let folders: Vec<FolderResponse> = folders_db.into_iter().map(|f| f.into()).collect();
 
-    // Fetch ciphers
+    // Fetch ciphers (exclude soft-deleted)
     let ciphers: Vec<Value> = db
-        .prepare("SELECT * FROM ciphers WHERE user_id = ?1")
+        .prepare("SELECT * FROM ciphers WHERE user_id = ?1 AND deleted_at IS NULL")
         .bind(&[user_id.clone().into()])?
         .all()
         .await?
