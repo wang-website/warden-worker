@@ -46,12 +46,17 @@ pub fn api_router(env: Env) -> Router {
             "/identity/accounts/register/send-verification-email",
             post(accounts::send_verification_email),
         )
+        .route(
+            "/identity/accounts/register/verification-email-clicked",
+            post(accounts::verification_email_clicked),
+        )
         // Main data sync route
         .route("/api/sync", get(crate::handlers::sync::get_sync_data))
         // Account management
         .route("/api/accounts/revision-date", get(accounts::revision_date))
         .route("/api/accounts/password-hint", post(accounts::password_hint))
         .route("/api/accounts/tasks", get(accounts::get_tasks))
+        .route("/api/tasks", get(accounts::get_tasks))
         .route("/api/accounts/profile", get(accounts::get_profile))
         .route("/api/accounts/profile", post(accounts::post_profile))
         .route("/api/accounts/profile", put(accounts::put_profile))
@@ -185,7 +190,37 @@ pub fn api_router(env: Env) -> Router {
             get(emergency_access::get_granted_access),
         )
         // WebAuthn (stub)
-        .route("/api/webauthn", get(webauth::get_webauthn_credentials))
+        .route(
+            "/api/webauthn",
+            get(webauth::get_webauthn_credentials)
+                .post(webauth::post_webauthn_credentials)
+                .put(webauth::put_webauthn_credentials),
+        )
+        .route(
+            "/api/webauthn/attestation-options",
+            post(webauth::post_attestation_options),
+        )
+        .route(
+            "/api/webauthn/assertion-options",
+            post(webauth::post_assertion_options),
+        )
+        .route(
+            "/api/accounts/webauthn/assertion-options",
+            get(webauth::get_assertion_options),
+        )
+        // Two-factor WebAuthn (stub)
+        .route(
+            "/api/two-factor/get-webauthn",
+            post(webauth::get_webauthn_two_factor),
+        )
+        .route(
+            "/api/two-factor/get-webauthn-challenge",
+            post(webauth::get_webauthn_challenge),
+        )
+        .route(
+            "/api/two-factor/webauthn",
+            put(webauth::put_webauthn_two_factor).delete(webauth::delete_webauthn_two_factor),
+        )
         // D1 Usage
         .route("/api/d1/usage", get(usage::d1_usage))
         .with_state(app_state)
