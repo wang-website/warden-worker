@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use worker::Env;
 
-use crate::{db, error::AppError};
+use crate::{auth::Claims, db, error::AppError};
 
 const D1_MAX_BYTES: i64 = 500 * 1024 * 1024;
 
@@ -26,6 +26,7 @@ async fn sum_i64(db: &worker::D1Database, sql: &str, binds: &[worker::wasm_bindg
 
 #[worker::send]
 pub async fn d1_usage(
+    _claims: Claims,
     State(env): State<Arc<Env>>,
     Query(q): Query<UsageQuery>,
 ) -> Result<Json<Value>, AppError> {
