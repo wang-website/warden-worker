@@ -5,6 +5,8 @@ PRAGMA foreign_keys = ON;
 
 DROP TABLE IF EXISTS devices;
 DROP TABLE IF EXISTS two_factor_authenticator;
+DROP TABLE IF EXISTS attachments_pending;
+DROP TABLE IF EXISTS attachments;
 DROP TABLE IF EXISTS folders;
 DROP TABLE IF EXISTS ciphers;
 DROP TABLE IF EXISTS send_file_chunks;
@@ -19,12 +21,20 @@ CREATE TABLE IF NOT EXISTS users (
     email_verified BOOLEAN NOT NULL DEFAULT 0,
     master_password_hash TEXT NOT NULL,
     master_password_hint TEXT,
+    password_salt TEXT,
+    password_iterations INTEGER NOT NULL DEFAULT 0,
+    avatar_color TEXT,
     key TEXT NOT NULL,
     private_key TEXT NOT NULL,
     public_key TEXT NOT NULL,
     kdf_type INTEGER NOT NULL DEFAULT 0,
     kdf_iterations INTEGER NOT NULL DEFAULT 600000,
+    kdf_memory INTEGER,
+    kdf_parallelism INTEGER,
     security_stamp TEXT,
+    equivalent_domains TEXT NOT NULL DEFAULT '[]',
+    excluded_globals TEXT NOT NULL DEFAULT '[]',
+    totp_recover TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -130,3 +140,32 @@ CREATE INDEX IF NOT EXISTS idx_send_files_send_id ON send_files(send_id);
 CREATE INDEX IF NOT EXISTS idx_send_file_chunks_send_file_id ON send_file_chunks(send_file_id);
 CREATE INDEX IF NOT EXISTS idx_folders_user_id ON folders(user_id);
 CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id);
+
+-- Attachments (R2/KV storage metadata)
+CREATE TABLE IF NOT EXISTS attachments (
+    id TEXT PRIMARY KEY NOT NULL,
+    cipher_id TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    akey TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    organization_id TEXT,
+    FOREIGN KEY (cipher_id) REFERENCES ciphers(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS attachments_pending (
+    id TEXT PRIMARY KEY NOT NULL,
+    cipher_id TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    akey TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    organization_id TEXT,
+    FOREIGN KEY (cipher_id) REFERENCES ciphers(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_attachments_cipher ON attachments(cipher_id);
+CREATE INDEX IF NOT EXISTS idx_attachments_pending_cipher ON attachments_pending(cipher_id);
+CREATE INDEX IF NOT EXISTS idx_attachments_pending_created_at ON attachments_pending(created_at);
