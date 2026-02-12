@@ -675,7 +675,7 @@ async fn load_attachment_map_json(
 async fn upload_to_storage(
     env: &Env,
     key: &str,
-    _content_type: Option<String>,
+    content_type: Option<String>,
     data: Vec<u8>,
 ) -> Result<(), AppError> {
     match get_storage_backend(env) {
@@ -697,7 +697,7 @@ async fn upload_to_storage(
                 .bucket(ATTACHMENTS_BUCKET)
                 .map_err(|_| AppError::Internal)?;
             let mut builder = bucket.put(key, data);
-            if let Some(ct) = _content_type {
+            if let Some(ct) = content_type {
                 builder = builder.http_metadata(worker::HttpMetadata {
                     content_type: Some(ct),
                     ..Default::default()

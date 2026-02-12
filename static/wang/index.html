@@ -290,7 +290,7 @@ async function loginApi(email, hash) {
     form.set('username', email);
     form.set('password', hash);
     const resp = await fetch('/identity/connect/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form.toString() });
-    if (resp.status === 429) throw new Error('⚠️ 登录尝试过于频繁，请等待一分钟后再试。');
+    if (resp.status === 429) throw new Error('⚠️ 登录尝试过于频繁，请稍后再试。');
     if (!resp.ok) throw new Error('登录失败: ' + await resp.text());
     return resp.json();
 }
