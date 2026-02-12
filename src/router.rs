@@ -27,7 +27,7 @@ pub fn api_router(env: Env) -> Router {
         .route("/api/wang/users", get(admin::list_users))
         .route("/api/wang/users/{id}", get(admin::get_user).put(admin::update_user).delete(admin::delete_user))
         .route("/api/wang/users/{id}/reset-password", post(admin::reset_user_password))
-        // 管理 API - 数据迁移
+        // 管理 API - 数据迁移（50MB 限制：vaultwarden 数据库可能包含大量密码项数据）
         .route("/api/wang/migrate", post(migrate::migrate_from_vaultwarden)
             .layer(DefaultBodyLimit::max(50 * 1024 * 1024)))
         // Identity/Auth routes

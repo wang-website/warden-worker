@@ -11,6 +11,8 @@ use worker::js_sys;
 use crate::error::AppError;
 
 /// Minimum PBKDF2 iterations for server-side password hashing.
+/// This is different from the client-side KDF iterations (MIN_PBKDF2_CLIENT_ITERATIONS in accounts.rs).
+/// Server-side hashing adds a second layer of protection over the client-provided hash.
 pub const MIN_SERVER_PBKDF2_ITERATIONS: u32 = 600_000;
 
 /// Salt length in bytes for server-side password hashing.

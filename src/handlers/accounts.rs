@@ -25,8 +25,9 @@ use crate::{
 
 const KDF_TYPE_PBKDF2: i32 = 0;
 const KDF_TYPE_ARGON2ID: i32 = 1;
-const MIN_PBKDF2_ITERATIONS: i32 = 100_000;
-const DEFAULT_PBKDF2_ITERATIONS: i32 = 600_000;
+/// Client-side PBKDF2 minimum iterations (KDF parameter from Bitwarden client).
+const MIN_PBKDF2_CLIENT_ITERATIONS: i32 = 100_000;
+const DEFAULT_PBKDF2_CLIENT_ITERATIONS: i32 = 600_000;
 
 fn ensure_supported_kdf(
     kdf_type: i32,
@@ -36,10 +37,10 @@ fn ensure_supported_kdf(
 ) -> Result<(), AppError> {
     match kdf_type {
         KDF_TYPE_PBKDF2 => {
-            if iterations < MIN_PBKDF2_ITERATIONS {
+            if iterations < MIN_PBKDF2_CLIENT_ITERATIONS {
                 return Err(AppError::BadRequest(format!(
                     "PBKDF2 iterations must be at least {}",
-                    MIN_PBKDF2_ITERATIONS
+                    MIN_PBKDF2_CLIENT_ITERATIONS
                 )));
             }
         }
@@ -168,7 +169,7 @@ pub async fn prelogin(
 
     Ok(Json(PreloginResponse {
         kdf: kdf_type.unwrap_or(KDF_TYPE_PBKDF2),
-        kdf_iterations: kdf_iterations.unwrap_or(DEFAULT_PBKDF2_ITERATIONS),
+        kdf_iterations: kdf_iterations.unwrap_or(DEFAULT_PBKDF2_CLIENT_ITERATIONS),
         kdf_memory,
         kdf_parallelism,
     }))
