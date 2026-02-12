@@ -1,5 +1,5 @@
 use axum::{extract::State, Json};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::sync::Arc;
 use worker::Env;
 
@@ -7,20 +7,20 @@ use crate::{
     auth::Claims,
     db,
     error::AppError,
+    handlers::two_factor_enabled,
     models::{
         cipher::{Cipher, CipherDBModel},
         folder::{Folder, FolderResponse},
-        sync::{Profile, SyncResponse},
+        sync::Profile,
         user::User,
     },
-    two_factor,
 };
 
 #[worker::send]
 pub async fn get_sync_data(
     claims: Claims,
     State(env): State<Arc<Env>>,
-) -> Result<Json<SyncResponse>, AppError> {
+) -> Result<Json<Value>, AppError> {
     let user_id = claims.sub;
     let db = db::get_db(&env)?;
 
@@ -31,6 +31,26 @@ pub async fn get_sync_data(
         .first(None)
         .await?
         .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+    let two_factor_enabled = two_factor_enabled(&db, &user_id).await?;
+
+    let has_master_password = !user.master_password_hash.is_empty();
+
+    let master_password_unlock = if has_master_password {
+        json!({
+            "kdf": {
+                "kdfType": user.kdf_type,
+                "iterations": user.kdf_iterations,
+                "memory": user.kdf_memory,
+                "parallelism": user.kdf_parallelism
+            },
+            "masterKeyEncryptedUserKey": user.key,
+            "masterKeyWrappedUserKey": user.key,
+            "salt": user.email
+        })
+    } else {
+        Value::Null
+    };
 
     // Fetch folders
     let folders_db: Vec<Folder> = db
@@ -64,34 +84,28 @@ pub async fn get_sync_data(
         .map(|cipher| cipher.into())
         .collect::<Vec<Cipher>>();
 
-    let time = chrono::DateTime::parse_from_rfc3339(&user.created_at)
-        .map_err(|_| AppError::Internal)?
-        .to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
-    let profile = Profile {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        master_password_hint: user.master_password_hint,
-        security_stamp: user.security_stamp,
-        object: "profile".to_string(),
-        premium: true,
-        premium_from_organization: false,
-        email_verified: true,
-        force_password_reset: false,
-        two_factor_enabled: two_factor::is_authenticator_enabled(&db, &user_id).await?,
-        uses_key_connector: false,
-        creation_date: time,
-        key: user.key,
-        private_key: user.private_key,
-    };
+    let mut profile = Profile::from_user(user, two_factor_enabled)?;
+    profile.status = if has_master_password { 0 } else { 1 };
 
-    let response = SyncResponse {
-        profile,
-        folders,
-        ciphers,
-        domains: serde_json::Value::Null, // Ignored for basic implementation
-        object: "sync".to_string(),
-    };
+    let equivalent_domains: Value = json!([]);
+
+    let response = json!({
+        "profile": profile,
+        "folders": folders,
+        "collections": [],
+        "policies": [],
+        "ciphers": ciphers,
+        "domains": {
+            "equivalentDomains": equivalent_domains,
+            "globalEquivalentDomains": [],
+            "object": "domains"
+        },
+        "sends": [],
+        "userDecryption": {
+            "masterPasswordUnlock": master_password_unlock
+        },
+        "object": "sync"
+    });
 
     Ok(Json(response))
 }

@@ -1,5 +1,5 @@
 use axum::{
-    routing::{get, post, put, delete},
+    routing::{delete, get, post, put},
     Router,
     response::Html,
 };
@@ -7,7 +7,10 @@ use axum::extract::DefaultBodyLimit;
 use std::sync::Arc;
 use worker::Env;
 
-use crate::handlers::{accounts, ciphers, config, identity, sync, folders, import, two_factor, devices, sends, usage};
+use crate::handlers::{
+    accounts, ciphers, config, devices, domains, emergency_access, folders, identity,
+    import, meta, sends, two_factor, usage, webauth,
+};
 
 pub fn api_router(env: Env) -> Router {
     let app_state = Arc::new(env);
@@ -17,6 +20,7 @@ pub fn api_router(env: Env) -> Router {
         // Identity/Auth routes
         .route("/identity/accounts/prelogin", post(accounts::prelogin))
         .route("/api/accounts/prelogin", post(accounts::prelogin))
+        .route("/identity/accounts/register", post(accounts::register))
         .route(
             "/identity/accounts/register/finish",
             post(accounts::register),
@@ -26,15 +30,42 @@ pub fn api_router(env: Env) -> Router {
             "/identity/accounts/register/send-verification-email",
             post(accounts::send_verification_email),
         )
-        .route("/api/accounts/profile", get(accounts::profile))
+        // Main data sync route
+        .route("/api/sync", get(crate::handlers::sync::get_sync_data))
+        // Account management
         .route("/api/accounts/revision-date", get(accounts::revision_date))
+        .route("/api/accounts/password-hint", post(accounts::password_hint))
+        .route("/api/accounts/tasks", get(accounts::get_tasks))
+        .route("/api/accounts/profile", get(accounts::get_profile))
+        .route("/api/accounts/profile", post(accounts::post_profile))
+        .route("/api/accounts/profile", put(accounts::put_profile))
+        .route("/api/accounts/avatar", put(accounts::put_avatar))
+        // Delete account
+        .route("/api/accounts", delete(accounts::delete_account))
+        .route("/api/accounts/delete", post(accounts::delete_account))
+        // Set KDF
+        .route("/api/accounts/kdf", post(accounts::post_kdf))
+        // Change password
+        .route("/api/accounts/password", post(accounts::post_password))
+        .route("/api/accounts/password", put(accounts::post_password))
+        // Rotate encryption keys
+        .route(
+            "/api/accounts/key-management/rotate-user-account-keys",
+            post(accounts::post_rotatekey),
+        )
+        // Auth requests (login with device) - stub
+        .route("/api/auth-requests", get(accounts::get_auth_requests))
+        .route(
+            "/api/auth-requests/pending",
+            get(accounts::get_auth_requests_pending),
+        )
+        // Device management
         .route("/api/devices/knowndevice", get(devices::knowndevice))
         .route(
             "/api/devices/identifier/{id}/token",
             put(devices::device_token).post(devices::device_token),
         )
-        .route("/api/accounts/password", put(accounts::change_master_password))
-        .route("/api/accounts/email", put(accounts::change_email))
+        // Two-factor authentication
         .route("/api/two-factor", get(two_factor::two_factor_status))
         .route("/api/two-factor/get-authenticator", post(two_factor::get_authenticator))
         .route(
@@ -46,6 +77,7 @@ pub fn api_router(env: Env) -> Router {
         .route("/api/two-factor/authenticator/request", post(two_factor::authenticator_request))
         .route("/api/two-factor/authenticator/enable", post(two_factor::authenticator_enable))
         .route("/api/two-factor/authenticator/disable", post(two_factor::authenticator_disable))
+        // Sends
         .route("/api/sends", get(sends::get_sends).post(sends::post_send))
         .route("/api/sends/file/v2", post(sends::post_send_file_v2))
         .route("/api/sends/access/{access_id}", post(sends::post_access))
@@ -68,8 +100,6 @@ pub fn api_router(env: Env) -> Router {
             post(sends::post_send_file_v2_data)
                 .layer(DefaultBodyLimit::max(100 * 1024 * 1024)),
         )
-        // Main data sync route
-        .route("/api/sync", get(sync::get_sync_data))
         // Ciphers CRUD
         .route("/api/ciphers/create", post(ciphers::create_cipher))
         .route(
@@ -91,15 +121,34 @@ pub fn api_router(env: Env) -> Router {
             put(ciphers::soft_delete_ciphers).post(ciphers::hard_delete_ciphers),
         )
         .route("/api/ciphers/restore", put(ciphers::restore_ciphers))
+        // Purge vault
+        .route("/api/ciphers/purge", post(ciphers::purge_vault))
         // Folders CRUD
         .route("/api/folders", post(folders::create_folder))
         .route("/api/folders/{id}", put(folders::update_folder))
         .route("/api/folders/{id}", delete(folders::delete_folder))
+        // Config & Meta endpoints
         .route("/api/config", get(config::config))
-        .route("/api/alive", get(config::alive))
-        .route("/api/now", get(config::now))
-        .route("/api/version", get(config::version))
-        .route("/api/webauthn", get(config::webauthn))
+        .route("/api/alive", get(meta::alive))
+        .route("/api/now", get(meta::now))
+        .route("/api/version", get(meta::version))
+        .route("/api/hibp/breach", get(meta::hibp_breach))
+        // Settings
+        .route("/api/settings/domains", get(domains::get_domains))
+        .route("/api/settings/domains", post(domains::post_domains))
+        .route("/api/settings/domains", put(domains::put_domains))
+        // Emergency access (stub)
+        .route(
+            "/api/emergency-access/trusted",
+            get(emergency_access::get_trusted_contacts),
+        )
+        .route(
+            "/api/emergency-access/granted",
+            get(emergency_access::get_granted_access),
+        )
+        // WebAuthn (stub)
+        .route("/api/webauthn", get(webauth::get_webauthn_credentials))
+        // D1 Usage
         .route("/api/d1/usage", get(usage::d1_usage))
         .with_state(app_state)
 }

@@ -1,22 +1,97 @@
+use constant_time_eq::constant_time_eq;
 use serde::{Deserialize, Serialize};
+
+use crate::{crypto::verify_password, error::AppError};
+
+fn default_json_array_string() -> String {
+    "[]".to_string()
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct User {
     pub id: String,
     pub name: Option<String>,
+    pub avatar_color: Option<String>,
     pub email: String,
     #[serde(with = "bool_from_int")]
     pub email_verified: bool,
     pub master_password_hash: String,
     pub master_password_hint: Option<String>,
+    pub password_salt: Option<String>,
+    #[serde(default = "default_password_iterations")]
+    pub password_iterations: i32,
     pub key: String,
     pub private_key: String,
     pub public_key: String,
     pub kdf_type: i32,
     pub kdf_iterations: i32,
+    pub kdf_memory: Option<i32>,
+    pub kdf_parallelism: Option<i32>,
     pub security_stamp: String,
+    #[serde(default = "default_json_array_string")]
+    pub equivalent_domains: String,
+    #[serde(default = "default_json_array_string")]
+    pub excluded_globals: String,
+    pub totp_recover: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+fn default_password_iterations() -> i32 {
+    0
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PasswordVerification {
+    MatchCurrentScheme,
+    MatchLegacyScheme,
+    Mismatch,
+}
+
+impl PasswordVerification {
+    pub fn is_valid(&self) -> bool {
+        matches!(
+            self,
+            PasswordVerification::MatchCurrentScheme | PasswordVerification::MatchLegacyScheme
+        )
+    }
+
+    pub fn needs_migration(&self) -> bool {
+        matches!(self, PasswordVerification::MatchLegacyScheme)
+    }
+}
+
+impl User {
+    pub async fn verify_master_password(
+        &self,
+        provided_hash: &str,
+    ) -> Result<PasswordVerification, AppError> {
+        if let Some(ref salt) = self.password_salt {
+            let is_valid = verify_password(
+                provided_hash,
+                &self.master_password_hash,
+                salt,
+                self.password_iterations as u32,
+            )
+            .await?;
+            Ok(if is_valid {
+                PasswordVerification::MatchCurrentScheme
+            } else {
+                PasswordVerification::Mismatch
+            })
+        } else {
+            let is_valid = constant_time_eq(
+                self.master_password_hash.as_bytes(),
+                provided_hash.as_bytes(),
+            );
+
+            Ok(if is_valid {
+                PasswordVerification::MatchLegacyScheme
+            } else {
+                PasswordVerification::Mismatch
+            })
+        }
+    }
 }
 
 mod bool_from_int {
@@ -68,6 +143,15 @@ pub struct RegisterRequest {
     pub user_asymmetric_keys: KeyData,
     pub kdf: i32,
     pub kdf_iterations: i32,
+    pub kdf_memory: Option<i32>,
+    pub kdf_parallelism: Option<i32>,
+}
+
+// For POST /accounts/password-hint request
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordHintRequest {
+    pub email: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,4 +159,163 @@ pub struct RegisterRequest {
 pub struct KeyData {
     pub public_key: String,
     pub encrypted_private_key: String,
+}
+
+/// Request body for password-protected operations (delete account, purge vault, etc.)
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordOrOtpData {
+    #[serde(alias = "MasterPasswordHash")]
+    pub master_password_hash: Option<String>,
+    #[allow(dead_code)]
+    pub otp: Option<String>,
+}
+
+// For POST /accounts/password request
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangePasswordRequest {
+    pub master_password_hash: String,
+    pub new_master_password_hash: String,
+    pub master_password_hint: Option<String>,
+    pub key: String,
+}
+
+// For POST /accounts/kdf request
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct KdfParams {
+    #[serde(alias = "kdfType")]
+    pub kdf_type: i32,
+    pub iterations: i32,
+    pub memory: Option<i32>,
+    pub parallelism: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthenticationData {
+    pub salt: String,
+    pub kdf: KdfParams,
+    pub master_password_authentication_hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnlockData {
+    pub salt: String,
+    pub kdf: KdfParams,
+    pub master_key_wrapped_user_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeKdfRequest {
+    pub key: String,
+    pub master_password_hash: String,
+    pub new_master_password_hash: String,
+
+    pub kdf: Option<i32>,
+    pub kdf_iterations: Option<i32>,
+    pub kdf_memory: Option<i32>,
+    pub kdf_parallelism: Option<i32>,
+
+    pub authentication_data: Option<AuthenticationData>,
+    pub unlock_data: Option<UnlockData>,
+}
+
+impl ChangeKdfRequest {
+    pub fn get_kdf_params(&self) -> Option<(i32, i32, Option<i32>, Option<i32>)> {
+        if let Some(ref unlock_data) = self.unlock_data {
+            return Some((
+                unlock_data.kdf.kdf_type,
+                unlock_data.kdf.iterations,
+                unlock_data.kdf.memory,
+                unlock_data.kdf.parallelism,
+            ));
+        }
+
+        if let (Some(kdf), Some(iterations)) = (self.kdf, self.kdf_iterations) {
+            return Some((kdf, iterations, self.kdf_memory, self.kdf_parallelism));
+        }
+
+        None
+    }
+
+    pub fn get_new_password_hash(&self) -> &str {
+        if let Some(ref auth_data) = self.authentication_data {
+            &auth_data.master_password_authentication_hash
+        } else {
+            &self.new_master_password_hash
+        }
+    }
+
+    pub fn get_new_key(&self) -> &str {
+        if let Some(ref unlock_data) = self.unlock_data {
+            &unlock_data.master_key_wrapped_user_key
+        } else {
+            &self.key
+        }
+    }
+}
+
+// For POST /accounts/key-management/rotate-user-account-keys request
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RotateKeyRequest {
+    pub account_unlock_data: RotateAccountUnlockData,
+    pub account_keys: RotateAccountKeys,
+    pub account_data: RotateAccountData,
+    pub old_master_key_authentication_hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RotateAccountUnlockData {
+    pub master_password_unlock_data: MasterPasswordUnlockData,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MasterPasswordUnlockData {
+    pub kdf_type: i32,
+    pub kdf_iterations: i32,
+    pub kdf_parallelism: Option<i32>,
+    pub kdf_memory: Option<i32>,
+    pub email: String,
+    pub master_key_authentication_hash: String,
+    pub master_key_encrypted_user_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RotateAccountKeys {
+    pub user_key_encrypted_account_private_key: String,
+    pub account_public_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RotateAccountData {
+    pub ciphers: Vec<crate::models::cipher::CipherRequestData>,
+    pub folders: Vec<RotateFolderData>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RotateFolderData {
+    pub id: Option<String>,
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileData {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AvatarData {
+    pub avatar_color: Option<String>,
 }

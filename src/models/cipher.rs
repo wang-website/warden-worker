@@ -298,6 +298,8 @@ mod tests {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CipherRequestData {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     #[serde(rename = "type")]
     pub r#type: i32,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -369,3 +369,60 @@ pub async fn hard_delete_ciphers_delete(
 ) -> Result<Json<()>, AppError> {
     hard_delete_ciphers(claims, State(env), Json(payload)).await
 }
+
+/// POST /api/ciphers/purge - Purge vault (delete all ciphers and folders)
+#[worker::send]
+pub async fn purge_vault(
+    claims: Claims,
+    State(env): State<Arc<Env>>,
+    Json(payload): Json<crate::models::user::PasswordOrOtpData>,
+) -> Result<Json<()>, AppError> {
+    let db = db::get_db(&env)?;
+    let user_id = &claims.sub;
+
+    let user: serde_json::Value = db
+        .prepare("SELECT * FROM users WHERE id = ?1")
+        .bind(&[user_id.clone().into()])?
+        .first(None)
+        .await
+        .map_err(|_| AppError::Database)?
+        .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+    let user: crate::models::user::User =
+        serde_json::from_value(user).map_err(|_| AppError::Internal)?;
+
+    let provided_hash = payload
+        .master_password_hash
+        .ok_or_else(|| AppError::BadRequest("Missing master password hash".to_string()))?;
+
+    let verification = user.verify_master_password(&provided_hash).await?;
+
+    if !verification.is_valid() {
+        return Err(AppError::Unauthorized("Invalid password".to_string()));
+    }
+
+    // Delete all ciphers
+    query!(&db, "DELETE FROM ciphers WHERE user_id = ?1", user_id)
+        .map_err(|_| AppError::Database)?
+        .run()
+        .await?;
+
+    // Delete all folders
+    query!(&db, "DELETE FROM folders WHERE user_id = ?1", user_id)
+        .map_err(|_| AppError::Database)?
+        .run()
+        .await?;
+
+    // Update user revision date
+    let now = chrono::Utc::now().to_rfc3339();
+    query!(
+        &db,
+        "UPDATE users SET updated_at = ?1 WHERE id = ?2",
+        now,
+        user_id
+    )
+    .map_err(|_| AppError::Database)?
+    .run()
+    .await?;
+
+    Ok(Json(()))
+}
