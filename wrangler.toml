@@ -12,6 +12,7 @@ database_id = "897b6fd9-e611-437e-9c7f-703d3674ea1f"
 enabled = true
 head_sampling_rate = 1
 invocation_logs = true
+persist = true
 
 # 构建配置
 [build]
