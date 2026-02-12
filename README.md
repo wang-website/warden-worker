@@ -1,7 +1,5 @@
 # Warden Worker
 
-# 有问题？尝试 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/afoim/warden-worker)
-
 Warden Worker 是一个运行在 Cloudflare Workers 上的轻量级 Bitwarden 兼容服务端，使用 D1（SQLite）存储数据，Rust 编写，零服务器维护。
 
 客户端在本地完成加密，服务端只保存密文。
