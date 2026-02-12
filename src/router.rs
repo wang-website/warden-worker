@@ -8,8 +8,8 @@ use std::sync::Arc;
 use worker::Env;
 
 use crate::handlers::{
-    accounts, admin, ciphers, config, devices, domains, emergency_access, folders, identity,
-    import, meta, migrate, sends, two_factor, usage, webauth,
+    accounts, admin, attachments, ciphers, config, devices, domains, emergency_access, folders,
+    identity, import, meta, migrate, sends, two_factor, usage, webauth,
 };
 
 pub fn api_router(env: Env) -> Router {
@@ -27,6 +27,9 @@ pub fn api_router(env: Env) -> Router {
         .route("/api/wang/users", get(admin::list_users))
         .route("/api/wang/users/{id}", get(admin::get_user).put(admin::update_user).delete(admin::delete_user))
         .route("/api/wang/users/{id}/reset-password", post(admin::reset_user_password))
+        // 管理 API - 统计
+        .route("/api/wang/stats", get(admin::admin_stats))
+        .route("/api/wang/storage-info", get(attachments::storage_info))
         // 管理 API - 数据迁移（50MB 限制：vaultwarden 数据库可能包含大量密码项数据）
         .route("/api/wang/migrate", post(migrate::migrate_from_vaultwarden)
             .layer(DefaultBodyLimit::max(50 * 1024 * 1024)))
@@ -136,6 +139,28 @@ pub fn api_router(env: Env) -> Router {
         .route("/api/ciphers/restore", put(ciphers::restore_ciphers))
         // Purge vault
         .route("/api/ciphers/purge", post(ciphers::purge_vault))
+        // Attachments (R2/KV storage)
+        .route(
+            "/api/ciphers/{cipher_id}/attachment/v2",
+            post(attachments::create_attachment_v2)
+                .layer(DefaultBodyLimit::max(100 * 1024 * 1024)),
+        )
+        .route(
+            "/api/ciphers/{cipher_id}/attachment/{attachment_id}",
+            get(attachments::get_attachment)
+                .delete(attachments::delete_attachment)
+                .post(attachments::upload_attachment_v2_data)
+                .layer(DefaultBodyLimit::max(100 * 1024 * 1024)),
+        )
+        .route(
+            "/api/ciphers/{cipher_id}/attachment/{attachment_id}/delete",
+            post(attachments::delete_attachment_post),
+        )
+        .route(
+            "/api/ciphers/{cipher_id}/attachment",
+            post(attachments::upload_attachment_legacy)
+                .layer(DefaultBodyLimit::max(100 * 1024 * 1024)),
+        )
         // Folders CRUD
         .route("/api/folders", post(folders::create_folder))
         .route("/api/folders/{id}", put(folders::update_folder))

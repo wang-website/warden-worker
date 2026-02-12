@@ -102,6 +102,8 @@ pub struct Cipher {
     pub view_password: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub collection_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attachments: Option<Vec<crate::models::attachment::AttachmentResponse>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -139,6 +141,7 @@ impl Into<Cipher> for CipherDBModel {
             edit: true,
             view_password: true,
             collection_ids: None,
+            attachments: None,
         }
     }
 }
@@ -170,6 +173,7 @@ impl Serialize for Cipher {
             json!(self.organization_use_totp),
         );
         response_map.insert("collectionIds".to_string(), json!(self.collection_ids));
+        response_map.insert("attachments".to_string(), json!(self.attachments));
         response_map.insert("revisionDate".to_string(), json!(self.updated_at));
         response_map.insert("creationDate".to_string(), json!(self.created_at));
         response_map.insert("deletedDate".to_string(), json!(self.deleted_at));
@@ -272,6 +276,7 @@ mod tests {
             edit: true,
             view_password: true,
             collection_ids: None,
+            attachments: None,
         };
 
         let value = serde_json::to_value(cipher).expect("serialize cipher");

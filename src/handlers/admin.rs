@@ -270,7 +270,15 @@ pub async fn delete_user(
         return Err(AppError::NotFound("用户不存在".to_string()));
     }
 
-    // 级联删除用户数据
+    // 级联删除用户数据（先删附件存储对象）
+    if let Ok(keys) =
+        crate::handlers::attachments::list_attachment_keys_for_user(&db, &user_id).await
+    {
+        if !keys.is_empty() {
+            let _ = crate::handlers::attachments::delete_storage_objects(&env, &keys).await;
+        }
+    }
+
     query!(&db, "DELETE FROM ciphers WHERE user_id = ?1", user_id)
         .map_err(|_| AppError::Database)?
         .run()
@@ -347,5 +355,100 @@ pub async fn reset_user_password(
     .run()
     .await?;
 
-    Ok(Json(json!({ "success": true })))
+    Ok(Json(json!({ "success": true, "message": "密码已重置" })))
+}
+
+/// GET /api/wang/stats - 管理后台统计数据
+#[worker::send]
+pub async fn admin_stats(
+    claims: Claims,
+    State(env): State<Arc<Env>>,
+) -> Result<Json<Value>, AppError> {
+    verify_admin(&env, &claims)?;
+
+    let db = db::get_db(&env)?;
+
+    // 总用户数
+    let total_users: i64 = db
+        .prepare("SELECT COUNT(*) as cnt FROM users")
+        .first(Some("cnt"))
+        .await
+        .map_err(|_| AppError::Database)?
+        .unwrap_or(0);
+
+    // 总密码项数
+    let total_ciphers: i64 = db
+        .prepare("SELECT COUNT(*) as cnt FROM ciphers")
+        .first(Some("cnt"))
+        .await
+        .map_err(|_| AppError::Database)?
+        .unwrap_or(0);
+
+    // 总文件夹数
+    let total_folders: i64 = db
+        .prepare("SELECT COUNT(*) as cnt FROM folders")
+        .first(Some("cnt"))
+        .await
+        .map_err(|_| AppError::Database)?
+        .unwrap_or(0);
+
+    // 总 Send 数
+    let total_sends: i64 = db
+        .prepare("SELECT COUNT(*) as cnt FROM sends")
+        .first(Some("cnt"))
+        .await
+        .map_err(|_| AppError::Database)?
+        .unwrap_or(0);
+
+    // 已启用 2FA 的用户数
+    let tfa_users: i64 = db
+        .prepare("SELECT COUNT(DISTINCT user_id) as cnt FROM two_factor_authenticator")
+        .first(Some("cnt"))
+        .await
+        .map_err(|_| AppError::Database)?
+        .unwrap_or(0);
+
+    // 每用户统计
+    let user_stats: Vec<Value> = db
+        .prepare(
+            "SELECT u.id, u.email, u.name,
+                COALESCE(c.cnt, 0) as cipher_count,
+                COALESCE(f.cnt, 0) as folder_count,
+                COALESCE(s.cnt, 0) as send_count,
+                COALESCE(c.data_bytes, 0) as cipher_bytes,
+                COALESCE(s.data_bytes, 0) as send_bytes,
+                LENGTH(u.email) + LENGTH(COALESCE(u.name, '')) + LENGTH(u.master_password_hash) + LENGTH(COALESCE(u.master_password_hint, '')) + LENGTH(u.key) + LENGTH(u.private_key) + LENGTH(u.public_key) as user_bytes,
+                u.created_at
+             FROM users u
+             LEFT JOIN (SELECT user_id, COUNT(*) as cnt, COALESCE(SUM(LENGTH(data)), 0) as data_bytes FROM ciphers GROUP BY user_id) c ON u.id = c.user_id
+             LEFT JOIN (SELECT user_id, COUNT(*) as cnt FROM folders GROUP BY user_id) f ON u.id = f.user_id
+             LEFT JOIN (SELECT user_id, COUNT(*) as cnt, COALESCE(SUM(LENGTH(data)), 0) as data_bytes FROM sends GROUP BY user_id) s ON u.id = s.user_id
+             ORDER BY cipher_bytes DESC",
+        )
+        .all()
+        .await
+        .map_err(|_| AppError::Database)?
+        .results()
+        .map_err(|_| AppError::Database)?;
+
+    // 存储后端
+    let storage_backend = if crate::handlers::attachments::attachments_enabled(&env) {
+        match crate::handlers::attachments::get_storage_backend(&env) {
+            Some(crate::handlers::attachments::StorageBackend::R2) => "R2",
+            Some(crate::handlers::attachments::StorageBackend::KV) => "KV",
+            None => "未配置",
+        }
+    } else {
+        "未配置"
+    };
+
+    Ok(Json(json!({
+        "totalUsers": total_users,
+        "totalCiphers": total_ciphers,
+        "totalFolders": total_folders,
+        "totalSends": total_sends,
+        "tfaUsers": tfa_users,
+        "storageBackend": storage_backend,
+        "userStats": user_stats,
+    })))
 }

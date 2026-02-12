@@ -1,3 +1,4 @@
+pub mod attachment;
 pub mod user;
 pub mod sync;
 pub mod cipher;

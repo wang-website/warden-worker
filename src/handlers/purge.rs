@@ -60,6 +60,21 @@ pub async fn purge_deleted_ciphers(env: &Env) -> Result<u32, worker::Error> {
     let count = count_result.map(|r| r.count).unwrap_or(0);
 
     if count > 0 {
+        // Delete attachment storage objects for ciphers being purged
+        if let Ok(keys) =
+            crate::handlers::attachments::list_attachment_keys_for_soft_deleted_before(
+                &db,
+                &cutoff_str,
+            )
+            .await
+        {
+            if !keys.is_empty() {
+                log::info!("Deleting {} attachment storage object(s)", keys.len());
+                let _ =
+                    crate::handlers::attachments::delete_storage_objects(env, &keys).await;
+            }
+        }
+
         query!(
             &db,
             "DELETE FROM ciphers WHERE deleted_at IS NOT NULL AND deleted_at < ?1",

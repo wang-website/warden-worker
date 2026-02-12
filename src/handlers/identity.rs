@@ -234,6 +234,18 @@ pub async fn token(
                 .password
                 .ok_or_else(|| AppError::BadRequest("Missing password".to_string()))?;
 
+            // Rate limiting: prevent brute force login attempts per email
+            if let Ok(rate_limiter) = env.rate_limiter("LOGIN_RATE_LIMITER") {
+                let rate_limit_key = format!("login:{}", username.to_lowercase());
+                if let Ok(outcome) = rate_limiter.limit(rate_limit_key).await {
+                    if !outcome.success {
+                        return Err(AppError::TooManyRequests(
+                            "登录尝试过于频繁，请稍后再试。".to_string(),
+                        ));
+                    }
+                }
+            }
+
             let user: Value = db
                 .prepare("SELECT * FROM users WHERE email = ?1")
                 .bind(&[username.to_lowercase().into()])?

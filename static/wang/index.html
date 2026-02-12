@@ -88,6 +88,7 @@
         <div class="nav">
             <a href="#home" onclick="showPage('home')" id="navHome" class="active">首页</a>
             <a href="#users" onclick="showPage('users')" id="navUsers">用户管理</a>
+            <a href="#stats" onclick="showPage('stats')" id="navStats">统计</a>
             <a href="#migrate" onclick="showPage('migrate')" id="navMigrate">数据迁移</a>
             <a href="/wang/demo">工具箱</a>
             <a href="#" onclick="doLogout()">退出</a>
@@ -111,6 +112,11 @@
                     <div class="icon">📦</div>
                     <h3>数据迁移</h3>
                     <p>从 Vaultwarden 迁移数据库。完整迁移用户凭证、加密密钥、密码项和文件夹。</p>
+                </a>
+                <a class="feature-card" href="#stats" onclick="showPage('stats')">
+                    <div class="icon">📊</div>
+                    <h3>系统统计</h3>
+                    <p>查看用户数、密码项、存储消耗。了解每个用户的 D1 存储使用情况。</p>
                 </a>
                 <a class="feature-card" href="/wang/demo">
                     <div class="icon">🔧</div>
@@ -142,6 +148,34 @@
                             </tr>
                         </thead>
                         <tbody id="usersTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 统计页 -->
+        <div id="pageStats" class="hidden">
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <h2>📊 系统统计</h2>
+                    <button class="btn btn-sm" onclick="loadStats()">🔄 刷新</button>
+                </div>
+                <div id="statsOverview" class="grid" style="margin-bottom:1.5rem;"></div>
+                <h3 style="margin-bottom:0.75rem; color:#175ddc; font-size:1rem;">每用户消耗</h3>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>邮箱</th>
+                                <th>名称</th>
+                                <th>密码项</th>
+                                <th>文件夹</th>
+                                <th>Send</th>
+                                <th>D1 估算</th>
+                                <th>创建时间</th>
+                            </tr>
+                        </thead>
+                        <tbody id="statsTable"></tbody>
                     </table>
                 </div>
             </div>
@@ -256,6 +290,7 @@ async function loginApi(email, hash) {
     form.set('username', email);
     form.set('password', hash);
     const resp = await fetch('/identity/connect/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form.toString() });
+    if (resp.status === 429) throw new Error('⚠️ 登录尝试过于频繁，请等待一分钟后再试。');
     if (!resp.ok) throw new Error('登录失败: ' + await resp.text());
     return resp.json();
 }
@@ -301,12 +336,13 @@ function doLogout() {
 }
 
 function showPage(page) {
-    ['pageHome', 'pageUsers', 'pageMigrate'].forEach(id => document.getElementById(id).classList.add('hidden'));
-    ['navHome', 'navUsers', 'navMigrate'].forEach(id => document.getElementById(id).classList.remove('active'));
+    ['pageHome', 'pageUsers', 'pageStats', 'pageMigrate'].forEach(id => document.getElementById(id).classList.add('hidden'));
+    ['navHome', 'navUsers', 'navStats', 'navMigrate'].forEach(id => document.getElementById(id).classList.remove('active'));
     const capPage = page.charAt(0).toUpperCase() + page.slice(1);
     document.getElementById('page' + capPage).classList.remove('hidden');
     document.getElementById('nav' + capPage).classList.add('active');
     if (page === 'users') loadUsers();
+    if (page === 'stats') loadStats();
 }
 
 async function loadUsers() {
@@ -437,6 +473,62 @@ async function doMigrate() {
 }
 
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function fmtBytes(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    if (b < 1024 * 1024 * 1024) return (b / (1024 * 1024)).toFixed(2) + ' MB';
+    return (b / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+async function loadStats() {
+    const overview = document.getElementById('statsOverview');
+    const tbody = document.getElementById('statsTable');
+    try {
+        const data = await api('GET', '/api/wang/stats');
+        overview.innerHTML = `
+            <div class="feature-card" style="cursor:default;">
+                <div class="icon">👥</div>
+                <h3>${data.totalUsers}</h3>
+                <p>用户总数（${data.tfaUsers} 人启用 2FA）</p>
+            </div>
+            <div class="feature-card" style="cursor:default;">
+                <div class="icon">🔑</div>
+                <h3>${data.totalCiphers}</h3>
+                <p>密码项总数</p>
+            </div>
+            <div class="feature-card" style="cursor:default;">
+                <div class="icon">📁</div>
+                <h3>${data.totalFolders}</h3>
+                <p>文件夹总数</p>
+            </div>
+            <div class="feature-card" style="cursor:default;">
+                <div class="icon">📤</div>
+                <h3>${data.totalSends}</h3>
+                <p>Send 总数</p>
+            </div>
+            <div class="feature-card" style="cursor:default;">
+                <div class="icon">💾</div>
+                <h3>${data.storageBackend}</h3>
+                <p>附件存储后端</p>
+            </div>`;
+        tbody.innerHTML = '';
+        if (data.userStats && data.userStats.length) {
+            for (const u of data.userStats) {
+                const totalBytes = (u.cipher_bytes || 0) + (u.send_bytes || 0) + (u.user_bytes || 0);
+                const created = u.created_at ? new Date(u.created_at).toLocaleDateString('zh-CN') : '-';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${esc(u.email)}</td><td>${esc(u.name || '-')}</td><td>${u.cipher_count}</td><td>${u.folder_count}</td><td>${u.send_count}</td><td><span class="badge badge-info">${fmtBytes(totalBytes)}</span></td><td>${created}</td>`;
+                tbody.appendChild(tr);
+            }
+        } else {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;">暂无数据</td></tr>';
+        }
+    } catch (e) {
+        overview.innerHTML = `<div class="msg msg-error">${esc(String(e))}</div>`;
+    }
+}
+
 document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 document.getElementById('loginEmail').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 </script>

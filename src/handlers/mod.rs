@@ -1,5 +1,6 @@
 pub mod accounts;
 pub mod admin;
+pub mod attachments;
 pub mod ciphers;
 pub mod config;
 pub mod devices;
@@ -78,28 +79,35 @@ pub(crate) async fn two_factor_enabled(
 
 /// 管理员权限验证（共享函数）。
 ///
-/// 检查当前登录用户的邮箱是否匹配 `ADMIN_EMAIL` 环境变量中配置的管理员邮箱。
-/// 仅完全匹配（不区分大小写）的单个邮箱才被视为管理员。
+/// 检查当前登录用户的邮箱是否在 `ADMIN_EMAILS` 环境变量配置的管理员列表中。
+/// 支持逗号分隔的多个邮箱，不区分大小写。
+/// 为保持向后兼容，也读取旧的 `ADMIN_EMAIL` 变量。
 ///
 /// # 环境变量
-/// - `ADMIN_EMAIL`：管理员邮箱地址（必须配置，仅支持一个邮箱）
+/// - `ADMIN_EMAILS`：管理员邮箱列表，逗号分隔（推荐）
+/// - `ADMIN_EMAIL`：单个管理员邮箱（向后兼容，若 ADMIN_EMAILS 未设置则使用此值）
 pub(crate) fn verify_admin(
     env: &worker::Env,
     claims: &crate::auth::Claims,
 ) -> Result<(), crate::error::AppError> {
-    let admin_email = env
-        .var("ADMIN_EMAIL")
+    let admin_emails_str = env
+        .var("ADMIN_EMAILS")
         .ok()
         .map(|v| v.to_string())
+        .or_else(|| env.var("ADMIN_EMAIL").ok().map(|v| v.to_string()))
         .unwrap_or_default();
 
-    if admin_email.is_empty() {
+    if admin_emails_str.trim().is_empty() {
         return Err(crate::error::AppError::Unauthorized(
-            "管理员功能未启用：请在环境变量中设置 ADMIN_EMAIL".to_string(),
+            "管理员功能未启用：请在环境变量中设置 ADMIN_EMAILS".to_string(),
         ));
     }
 
-    if !admin_email.trim().eq_ignore_ascii_case(&claims.email) {
+    let is_admin = admin_emails_str
+        .split(',')
+        .any(|email| email.trim().eq_ignore_ascii_case(&claims.email));
+
+    if !is_admin {
         return Err(crate::error::AppError::Unauthorized(
             "需要管理员权限".to_string(),
         ));

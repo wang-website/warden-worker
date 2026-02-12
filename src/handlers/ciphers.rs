@@ -78,6 +78,7 @@ async fn create_cipher_inner(
         } else {
             Some(collection_ids)
         },
+        attachments: None,
     };
 
     let data = serde_json::to_string(&cipher.data).map_err(|_| AppError::Internal)?;
@@ -174,6 +175,7 @@ pub async fn update_cipher(
         edit: true,
         view_password: true,
         collection_ids: None,
+        attachments: None,
     };
 
     let data = serde_json::to_string(&cipher.data).map_err(|_| AppError::Internal)?;
