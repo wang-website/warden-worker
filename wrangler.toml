@@ -21,4 +21,4 @@ command = "worker-build --release"
 [assets]
 directory = "./static/web-vault"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*", "/identity/*", "/sends/*", "/demo.html"]
+run_worker_first = ["/api/*", "/identity/*", "/sends/*", "/wang/*", "/demo.html"]

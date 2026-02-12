@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warden Worker - 管理中心</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f0f2f5; color: #333; min-height: 100vh;
+        }
+        .header { background: #175ddc; color: white; padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+        .header h1 { font-size: 1.4rem; }
+        .header .nav a { color: white; text-decoration: none; margin-left: 1.5rem; padding: 0.4rem 1rem; border-radius: 6px; transition: background 0.2s; }
+        .header .nav a:hover, .header .nav a.active { background: rgba(255,255,255,0.2); }
+        .container { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 1.5rem; margin-bottom: 1.5rem; }
+        .card h2 { color: #175ddc; margin-bottom: 1rem; font-size: 1.2rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+        .feature-card { background: white; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 1.5rem; transition: transform 0.2s; cursor: pointer; text-decoration: none; color: inherit; display: block; }
+        .feature-card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.12); }
+        .feature-card .icon { font-size: 2rem; margin-bottom: 0.75rem; }
+        .feature-card h3 { color: #175ddc; margin-bottom: 0.5rem; }
+        .feature-card p { color: #666; font-size: 0.9rem; line-height: 1.5; }
+        .login-box { max-width: 400px; margin: 4rem auto; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.4rem; font-weight: 600; font-size: 0.9rem; }
+        .form-group input[type="text"], .form-group input[type="email"], .form-group input[type="password"] { width: 100%; padding: 0.65rem; border: 1px solid #ddd; border-radius: 6px; font-size: 0.95rem; }
+        .btn { display: inline-block; background: #175ddc; color: white; padding: 0.7rem 1.5rem; border-radius: 6px; border: none; font-size: 0.95rem; cursor: pointer; text-decoration: none; transition: background 0.2s; }
+        .btn:hover { background: #134dbb; }
+        .btn-danger { background: #d32f2f; }
+        .btn-danger:hover { background: #b71c1c; }
+        .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.85rem; }
+        .btn-outline { background: transparent; color: #175ddc; border: 1px solid #175ddc; }
+        .btn-outline:hover { background: #175ddc; color: white; }
+        .msg { padding: 0.75rem; border-radius: 6px; margin-top: 1rem; font-size: 0.9rem; white-space: pre-wrap; word-break: break-all; }
+        .msg-success { background: #e8f5e9; color: #2e7d32; }
+        .msg-error { background: #ffebee; color: #d32f2f; }
+        .msg-info { background: #e3f2fd; color: #1565c0; }
+        .hidden { display: none !important; }
+        .user-bar { background: #e8f5e9; padding: 0.75rem 1rem; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .user-bar .email { font-weight: 600; color: #2e7d32; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+        th { background: #f8f9fa; font-weight: 600; font-size: 0.85rem; color: #666; text-transform: uppercase; }
+        tr:hover { background: #f8f9fa; }
+        .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+        .badge-info { background: #e3f2fd; color: #1565c0; }
+        .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal { background: white; border-radius: 12px; padding: 2rem; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .modal h3 { margin-bottom: 1rem; color: #175ddc; }
+        .footer { text-align: center; padding: 2rem; color: #999; font-size: 0.85rem; }
+        @media (max-width: 600px) {
+            .header { flex-direction: column; align-items: flex-start; }
+            .header .nav a { margin-left: 0; margin-right: 0.75rem; }
+            th, td { padding: 0.5rem 0.3rem; font-size: 0.8rem; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- 登录界面 -->
+<div id="loginView">
+    <div class="login-box">
+        <div class="card">
+            <h2>🔐 Warden Worker 管理中心</h2>
+            <p style="color:#666; margin-bottom:1.5rem; font-size:0.9rem;">使用您的 Bitwarden 账户登录管理后台。仅管理员可访问。</p>
+            <div class="form-group">
+                <label>邮箱</label>
+                <input id="loginEmail" type="email" placeholder="admin@example.com">
+            </div>
+            <div class="form-group">
+                <label>主密码</label>
+                <input id="loginPassword" type="password" placeholder="主密码">
+            </div>
+            <button class="btn" style="width:100%" onclick="doLogin()">登录</button>
+            <div id="loginMsg" class="msg hidden"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 管理主界面 -->
+<div id="mainView" class="hidden">
+    <div class="header">
+        <h1>🔐 Warden Worker 管理中心</h1>
+        <div class="nav">
+            <a href="#home" onclick="showPage('home')" id="navHome" class="active">首页</a>
+            <a href="#users" onclick="showPage('users')" id="navUsers">用户管理</a>
+            <a href="#migrate" onclick="showPage('migrate')" id="navMigrate">数据迁移</a>
+            <a href="/wang/demo">工具箱</a>
+            <a href="#" onclick="doLogout()">退出</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="user-bar">
+            <span>已登录：<span class="email" id="currentEmail"></span></span>
+        </div>
+
+        <!-- 首页 -->
+        <div id="pageHome">
+            <div class="grid">
+                <a class="feature-card" href="#users" onclick="showPage('users')">
+                    <div class="icon">👥</div>
+                    <h3>用户管理</h3>
+                    <p>查看、编辑、删除用户。管理所有注册用户的信息。</p>
+                </a>
+                <a class="feature-card" href="#migrate" onclick="showPage('migrate')">
+                    <div class="icon">📦</div>
+                    <h3>数据迁移</h3>
+                    <p>从 Vaultwarden 迁移数据库。完整迁移用户凭证、加密密钥、密码项和文件夹。</p>
+                </a>
+                <a class="feature-card" href="/wang/demo">
+                    <div class="icon">🔧</div>
+                    <h3>工具箱</h3>
+                    <p>修改主密码、修改邮箱、管理两步验证、查看 D1 占用等实用工具。</p>
+                </a>
+            </div>
+        </div>
+
+        <!-- 用户管理页 -->
+        <div id="pageUsers" class="hidden">
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <h2>👥 用户管理</h2>
+                    <button class="btn btn-sm" onclick="loadUsers()">🔄 刷新</button>
+                </div>
+                <div id="usersMsg" class="msg hidden"></div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>邮箱</th>
+                                <th>名称</th>
+                                <th>KDF</th>
+                                <th>密码项</th>
+                                <th>文件夹</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据迁移页 -->
+        <div id="pageMigrate" class="hidden">
+            <div class="card">
+                <h2>📦 从 Vaultwarden 迁移数据</h2>
+                <p style="color:#666; margin-bottom:1rem; line-height:1.6;">
+                    此功能用于从自部署的 <a href="https://github.com/dani-garcia/vaultwarden" target="_blank">Vaultwarden</a> 完整迁移数据。<br>
+                    <strong>优势：</strong>相比软件内置的导出/导入，此迁移可以保留加密密钥（密码哈希、对称密钥、非对称密钥对），用户无需重新设置主密码。
+                </p>
+                <div style="background:#fff3e0; padding:1rem; border-radius:6px; margin-bottom:1rem;">
+                    <strong>⚠️ 安全说明</strong>
+                    <ul style="margin-top:0.5rem; padding-left:1.5rem; color:#e65100; font-size:0.9rem; line-height:1.6;">
+                        <li>数据库文件仅在浏览器中读取，<strong>不会上传到服务器</strong></li>
+                        <li>浏览器使用 sql.js（SQLite WASM）在本地解析数据库</li>
+                        <li>仅提取的结构化数据通过 HTTPS 发送到后端写入 D1</li>
+                        <li>请确保在安全的网络环境下操作</li>
+                        <li>迁移前建议先备份当前数据</li>
+                    </ul>
+                </div>
+
+                <div class="form-group">
+                    <label>步骤 1：选择 Vaultwarden 数据库文件（db.sqlite3）</label>
+                    <input type="file" id="dbFile" accept=".sqlite3,.sqlite,.db" style="padding:0.5rem;">
+                </div>
+                <div class="form-group">
+                    <label style="font-weight:normal;">
+                        <input type="checkbox" id="overwriteExisting">
+                        覆盖已存在的用户（根据邮箱匹配，会删除该用户已有数据）
+                    </label>
+                </div>
+                <div class="form-group">
+                    <button class="btn" onclick="parseDbFile()">步骤 2：解析数据库</button>
+                </div>
+                <div id="parseResult" class="hidden">
+                    <div class="card" style="background:#f8f9fa; margin-top:1rem;">
+                        <h3 style="font-size:1rem;">📊 解析结果</h3>
+                        <div id="parseStats" style="margin:0.75rem 0; font-size:0.9rem;"></div>
+                        <button class="btn" onclick="doMigrate()">步骤 3：执行迁移</button>
+                    </div>
+                </div>
+                <div id="migrateMsg" class="msg hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">Powered by Warden Worker</div>
+</div>
+
+<!-- 编辑用户模态框 -->
+<div id="editModal" class="modal-overlay hidden">
+    <div class="modal">
+        <h3>✏️ 编辑用户</h3>
+        <input type="hidden" id="editUserId">
+        <div class="form-group">
+            <label>名称</label>
+            <input id="editName" type="text">
+        </div>
+        <div class="form-group">
+            <label>邮箱</label>
+            <input id="editEmail" type="email">
+        </div>
+        <div style="display:flex; gap:0.75rem; margin-top:1rem;">
+            <button class="btn" onclick="saveUser()">保存</button>
+            <button class="btn btn-outline" onclick="closeModal()">取消</button>
+        </div>
+        <div id="editMsg" class="msg hidden"></div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/sql-wasm.min.js"></script>
+
+<script>
+let accessToken = null;
+let currentEmail = '';
+let parsedData = null;
+
+const encoder = new TextEncoder();
+
+function b64encode(bytes) {
+    let binary = '';
+    const cs = 0x8000;
+    for (let i = 0; i < bytes.length; i += cs) binary += String.fromCharCode(...bytes.subarray(i, i + cs));
+    return btoa(binary);
+}
+
+async function pbkdf2Sha256(pw, salt, iterations, len) {
+    const km = await crypto.subtle.importKey('raw', pw, 'PBKDF2', false, ['deriveBits']);
+    return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, km, len * 8));
+}
+
+async function deriveMasterKey(email, password, kdfIterations) {
+    return pbkdf2Sha256(encoder.encode(password), encoder.encode(email.toLowerCase()), kdfIterations, 32);
+}
+
+async function deriveMasterPasswordHash(masterKey, password) {
+    return b64encode(await pbkdf2Sha256(masterKey, encoder.encode(password), 1, 32));
+}
+
+async function prelogin(email) {
+    const resp = await fetch('/identity/accounts/prelogin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+    if (!resp.ok) throw new Error('Prelogin 失败: ' + await resp.text());
+    return (await resp.json()).kdfIterations;
+}
+
+async function loginApi(email, hash) {
+    const form = new URLSearchParams();
+    form.set('grant_type', 'password');
+    form.set('username', email);
+    form.set('password', hash);
+    const resp = await fetch('/identity/connect/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form.toString() });
+    if (!resp.ok) throw new Error('登录失败: ' + await resp.text());
+    return resp.json();
+}
+
+async function api(method, path, body) {
+    const opts = { method, headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const resp = await fetch(path, opts);
+    const text = await resp.text();
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${text}`);
+    return text ? JSON.parse(text) : {};
+}
+
+function showMsg(el, text, type) { el.textContent = text; el.className = `msg msg-${type}`; }
+
+async function doLogin() {
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const msgEl = document.getElementById('loginMsg');
+    msgEl.className = 'msg hidden';
+    if (!email || !password) { showMsg(msgEl, '请填写邮箱和主密码', 'error'); return; }
+    try {
+        showMsg(msgEl, '正在登录...', 'info');
+        const kdfIter = await prelogin(email);
+        const mk = await deriveMasterKey(email, password, kdfIter);
+        const hash = await deriveMasterPasswordHash(mk, password);
+        const tokenJson = await loginApi(email, hash);
+        accessToken = tokenJson.access_token;
+        currentEmail = email;
+        document.getElementById('loginView').classList.add('hidden');
+        document.getElementById('mainView').classList.remove('hidden');
+        document.getElementById('currentEmail').textContent = email;
+        showPage('home');
+    } catch (e) { showMsg(msgEl, String(e), 'error'); }
+}
+
+function doLogout() {
+    accessToken = null; currentEmail = '';
+    document.getElementById('mainView').classList.add('hidden');
+    document.getElementById('loginView').classList.remove('hidden');
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('loginMsg').className = 'msg hidden';
+}
+
+function showPage(page) {
+    ['pageHome', 'pageUsers', 'pageMigrate'].forEach(id => document.getElementById(id).classList.add('hidden'));
+    ['navHome', 'navUsers', 'navMigrate'].forEach(id => document.getElementById(id).classList.remove('active'));
+    const capPage = page.charAt(0).toUpperCase() + page.slice(1);
+    document.getElementById('page' + capPage).classList.remove('hidden');
+    document.getElementById('nav' + capPage).classList.add('active');
+    if (page === 'users') loadUsers();
+}
+
+async function loadUsers() {
+    const msgEl = document.getElementById('usersMsg');
+    const tbody = document.getElementById('usersTable');
+    try {
+        msgEl.className = 'msg hidden';
+        const data = await api('GET', '/api/wang/users');
+        tbody.innerHTML = '';
+        for (const u of data.data) {
+            const kdf = u.kdfType === 1 ? 'Argon2id' : 'PBKDF2';
+            const created = u.createdAt ? new Date(u.createdAt).toLocaleDateString('zh-CN') : '-';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${esc(u.email)}</td><td>${esc(u.name || '-')}</td><td><span class="badge badge-info">${kdf}</span></td><td>${u.cipherCount}</td><td>${u.folderCount}</td><td>${created}</td><td class="actions"><button class="btn btn-sm btn-outline" onclick="editUser('${esc(u.id)}','${esc(u.name || '')}','${esc(u.email)}')">编辑</button><button class="btn btn-sm btn-danger" onclick="deleteUser('${esc(u.id)}','${esc(u.email)}')">删除</button></td>`;
+            tbody.appendChild(tr);
+        }
+        if (!data.data.length) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;">暂无用户</td></tr>';
+    } catch (e) { showMsg(msgEl, String(e), 'error'); }
+}
+
+function editUser(id, name, email) {
+    document.getElementById('editUserId').value = id;
+    document.getElementById('editName').value = name;
+    document.getElementById('editEmail').value = email;
+    document.getElementById('editMsg').className = 'msg hidden';
+    document.getElementById('editModal').classList.remove('hidden');
+}
+function closeModal() { document.getElementById('editModal').classList.add('hidden'); }
+
+async function saveUser() {
+    const id = document.getElementById('editUserId').value;
+    const name = document.getElementById('editName').value.trim();
+    const email = document.getElementById('editEmail').value.trim();
+    const msgEl = document.getElementById('editMsg');
+    try { await api('PUT', `/api/wang/users/${id}`, { name, email }); closeModal(); loadUsers(); }
+    catch (e) { showMsg(msgEl, String(e), 'error'); }
+}
+
+async function deleteUser(id, email) {
+    if (!confirm(`确定删除用户 ${email}？\n将删除该用户所有密码项和文件夹，不可恢复。`)) return;
+    const msgEl = document.getElementById('usersMsg');
+    try { await api('DELETE', `/api/wang/users/${id}`); showMsg(msgEl, `用户 ${email} 已删除`, 'success'); loadUsers(); }
+    catch (e) { showMsg(msgEl, String(e), 'error'); }
+}
+
+// ========== 数据迁移 ==========
+async function parseDbFile() {
+    const fileInput = document.getElementById('dbFile');
+    const msgEl = document.getElementById('migrateMsg');
+    const parseResult = document.getElementById('parseResult');
+    const parseStats = document.getElementById('parseStats');
+    parseResult.classList.add('hidden');
+    msgEl.className = 'msg hidden';
+    parsedData = null;
+    if (!fileInput.files.length) { showMsg(msgEl, '请先选择数据库文件', 'error'); return; }
+    try {
+        showMsg(msgEl, '正在加载 sql.js ...', 'info');
+        const SQL = await initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/${file}` });
+        showMsg(msgEl, '正在读取数据库文件...', 'info');
+        const buf = await fileInput.files[0].arrayBuffer();
+        const db = new SQL.Database(new Uint8Array(buf));
+
+        let users = [], folders = [], ciphers = [];
+        try {
+            const r = db.exec("SELECT * FROM users");
+            if (r.length > 0) {
+                const cols = r[0].columns;
+                for (const row of r[0].values) {
+                    const o = {}; cols.forEach((c, i) => o[c] = row[i]);
+                    users.push({
+                        uuid: o.uuid || o.id || '',
+                        email: o.email || '',
+                        name: o.name || '',
+                        passwordHash: blobToStr(o.password_hash),
+                        salt: blobToStr(o.salt),
+                        passwordIterations: o.password_iterations || 100000,
+                        passwordHint: o.password_hint || null,
+                        key: o.akey || o.key || '',
+                        privateKey: o.private_key || null,
+                        publicKey: o.public_key || null,
+                        totpSecret: o.totp_secret || null,
+                        totpRecover: o.totp_recover || null,
+                        securityStamp: o.security_stamp || '',
+                        equivalentDomains: o.equivalent_domains || '[]',
+                        excludedGlobals: o.excluded_globals || '[]',
+                        createdAt: o.created_at || new Date().toISOString(),
+                        updatedAt: o.updated_at || new Date().toISOString(),
+                        avatarColor: o.avatar_color || null,
+                        clientKdfType: o.client_kdf_type || 0,
+                        clientKdfIter: o.client_kdf_iter || 600000,
+                        clientKdfMemory: o.client_kdf_memory || null,
+                        clientKdfParallelism: o.client_kdf_parallelism || null,
+                    });
+                }
+            }
+        } catch (e) { showMsg(msgEl, '解析 users 表失败: ' + e.message, 'error'); return; }
+
+        try { const r = db.exec("SELECT * FROM folders"); if (r.length > 0) { const cols = r[0].columns; for (const row of r[0].values) { const o = {}; cols.forEach((c, i) => o[c] = row[i]); folders.push({ uuid: o.uuid || o.id || '', userUuid: o.user_uuid || o.user_id || '', name: o.name || '', createdAt: o.created_at || new Date().toISOString(), updatedAt: o.updated_at || new Date().toISOString() }); } } } catch {}
+        try { const r = db.exec("SELECT * FROM ciphers"); if (r.length > 0) { const cols = r[0].columns; for (const row of r[0].values) { const o = {}; cols.forEach((c, i) => o[c] = row[i]); ciphers.push({ uuid: o.uuid || o.id || '', userUuid: o.user_uuid || o.user_id || null, organizationUuid: o.organization_uuid || o.organization_id || null, folderUuid: o.folder_uuid || o.folder_id || null, type: o.type || 1, name: o.name || '', notes: o.notes || null, fields: o.fields || null, data: o.data || '{}', favorite: o.favorite === 1 || o.favorite === true, passwordHistory: o.password_history || null, reprompt: o.reprompt || null, createdAt: o.created_at || new Date().toISOString(), updatedAt: o.updated_at || new Date().toISOString(), deletedAt: o.deleted_at || null }); } } } catch {}
+
+        db.close();
+        parsedData = { users, folders, ciphers };
+        parseStats.innerHTML = `<div>✅ 用户: <strong>${users.length}</strong></div><div>✅ 文件夹: <strong>${folders.length}</strong></div><div>✅ 密码项: <strong>${ciphers.length}</strong></div><div style="margin-top:0.5rem;color:#666;font-size:0.85rem;">用户: ${users.map(u => u.email).join(', ')}</div>`;
+        parseResult.classList.remove('hidden');
+        msgEl.className = 'msg hidden';
+    } catch (e) { showMsg(msgEl, '解析失败: ' + e.message, 'error'); }
+}
+
+function blobToStr(val) {
+    if (val == null) return '';
+    if (typeof val === 'string') return val;
+    if (val instanceof Uint8Array || val instanceof ArrayBuffer) { try { return new TextDecoder().decode(val instanceof ArrayBuffer ? new Uint8Array(val) : val); } catch { return b64encode(val instanceof ArrayBuffer ? new Uint8Array(val) : val); } }
+    return String(val);
+}
+
+async function doMigrate() {
+    if (!parsedData) { alert('请先解析数据库'); return; }
+    const msgEl = document.getElementById('migrateMsg');
+    const overwrite = document.getElementById('overwriteExisting').checked;
+    if (!confirm(`确认迁移？\n- ${parsedData.users.length} 个用户\n- ${parsedData.folders.length} 个文件夹\n- ${parsedData.ciphers.length} 个密码项\n${overwrite ? '⚠️ 将覆盖同邮箱用户！' : '同邮箱用户将被跳过'}`)) return;
+    try {
+        showMsg(msgEl, '正在迁移，请稍候...', 'info');
+        const result = await api('POST', '/api/wang/migrate', { users: parsedData.users, folders: parsedData.folders, ciphers: parsedData.ciphers, overwriteExisting: overwrite });
+        let msg = `✅ 迁移完成！\n\n用户导入: ${result.usersImported}\n用户跳过: ${result.usersSkipped}\n文件夹: ${result.foldersImported}\n密码项: ${result.ciphersImported}`;
+        if (result.errors?.length) msg += `\n\n⚠️ 错误 (${result.errors.length}):\n` + result.errors.join('\n');
+        showMsg(msgEl, msg, result.errors?.length ? 'info' : 'success');
+    } catch (e) { showMsg(msgEl, '迁移失败: ' + e.message, 'error'); }
+}
+
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('loginEmail').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+</script>
+</body>
+</html>

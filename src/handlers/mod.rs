@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod admin;
 pub mod ciphers;
 pub mod config;
 pub mod devices;
@@ -8,8 +9,10 @@ pub mod folders;
 pub mod identity;
 pub mod import;
 pub mod meta;
+pub mod migrate;
 pub mod purge;
 pub mod sends;
+pub mod sync;
 pub mod two_factor;
 pub mod usage;
 pub mod webauth;

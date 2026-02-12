@@ -11,10 +11,18 @@ use serde::de::{self, Deserializer};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use uuid::Uuid;
-use worker::Env;
+use worker::{query, Env};
 use sha2::{Digest, Sha256};
 
-use crate::{auth::Claims, db, error::AppError, models::user::User, two_factor};
+use crate::{
+    auth::Claims,
+    crypto::{generate_salt, hash_password_for_storage},
+    db,
+    error::AppError,
+    handlers::server_password_iterations,
+    models::user::User,
+    two_factor,
+};
 
 fn deserialize_trimmed_i32_opt<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
 where
@@ -107,8 +115,8 @@ fn generate_tokens_and_response(
         "ForcePasswordReset": false,
         "Kdf": user.kdf_type,
         "KdfIterations": user.kdf_iterations,
-        "KdfMemory": null,
-        "KdfParallelism": null,
+        "KdfMemory": user.kdf_memory,
+        "KdfParallelism": user.kdf_parallelism,
         "Key": user.key,
         "MasterPasswordPolicy": { "Object": "masterPasswordPolicy" },
         "PrivateKey": user.private_key,
@@ -119,8 +127,8 @@ fn generate_tokens_and_response(
                 "Kdf": {
                     "KdfType": user.kdf_type,
                     "Iterations": user.kdf_iterations,
-                    "Memory": null,
-                    "Parallelism": null
+                    "Memory": user.kdf_memory,
+                    "Parallelism": user.kdf_parallelism
                 },
                 "MasterKeyEncryptedUserKey": user.key,
                 "MasterKeyWrappedUserKey": user.key,
@@ -234,13 +242,45 @@ pub async fn token(
                 .map_err(|_| AppError::Unauthorized("Invalid credentials".to_string()))?
                 .ok_or_else(|| AppError::Unauthorized("Invalid credentials".to_string()))?;
             let user: User = serde_json::from_value(user).map_err(|_| AppError::Internal)?;
-            // Securely compare the provided hash with the stored hash
-            if !constant_time_eq(
-                user.master_password_hash.as_bytes(),
-                password_hash.as_bytes(),
-            ) {
+
+            // Verify password using the new scheme (supports both legacy and server-side PBKDF2)
+            let verification = user.verify_master_password(&password_hash).await?;
+            if !verification.is_valid() {
                 return Err(AppError::Unauthorized("Invalid credentials".to_string()));
             }
+
+            // Auto-migrate password hash if user is on legacy scheme
+            let user = if verification.needs_migration() {
+                let desired_iterations = server_password_iterations(&env) as i32;
+                let new_salt = generate_salt()?;
+                let new_hash =
+                    hash_password_for_storage(&password_hash, &new_salt, desired_iterations as u32)
+                        .await?;
+                let now = Utc::now().to_rfc3339();
+
+                let _ = query!(
+                    &db,
+                    "UPDATE users SET master_password_hash = ?1, password_salt = ?2, password_iterations = ?3, updated_at = ?4 WHERE id = ?5",
+                    &new_hash,
+                    &new_salt,
+                    desired_iterations,
+                    &now,
+                    &user.id
+                )
+                .map_err(|_| AppError::Database)?
+                .run()
+                .await;
+
+                User {
+                    master_password_hash: new_hash,
+                    password_salt: Some(new_salt),
+                    password_iterations: desired_iterations,
+                    updated_at: now,
+                    ..user
+                }
+            } else {
+                user
+            };
 
             let two_factor_enabled = two_factor::is_authenticator_enabled(&db, &user.id).await?;
             let mut remember_token_to_return: Option<String> = None;

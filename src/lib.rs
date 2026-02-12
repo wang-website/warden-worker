@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::{extract::DefaultBodyLimit, Extension};
 use tower_http::cors::{Any, CorsLayer};
 use tower_service::Service;

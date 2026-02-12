@@ -1,6 +1,5 @@
 use axum::{extract::State, Json};
 use chrono::Utc;
-use log::warn;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -29,7 +28,7 @@ pub async fn get_domains(
         .get("equivalent_domains")
         .and_then(|v| v.as_str())
         .unwrap_or("[]");
-    let excluded_globals = row
+    let _excluded_globals = row
         .get("excluded_globals")
         .and_then(|v| v.as_str())
         .unwrap_or("[]");

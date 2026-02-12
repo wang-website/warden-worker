@@ -8,15 +8,28 @@ use std::sync::Arc;
 use worker::Env;
 
 use crate::handlers::{
-    accounts, ciphers, config, devices, domains, emergency_access, folders, identity,
-    import, meta, sends, two_factor, usage, webauth,
+    accounts, admin, ciphers, config, devices, domains, emergency_access, folders, identity,
+    import, meta, migrate, sends, two_factor, usage, webauth,
 };
 
 pub fn api_router(env: Env) -> Router {
     let app_state = Arc::new(env);
 
     Router::new()
-        .route("/demo.html", get(|| async { Html(include_str!("../static/demo.html")) }))
+        // /wang 管理界面
+        .route("/wang", get(|| async { Html(include_str!("../static/wang/index.html")) }))
+        .route("/wang/", get(|| async { Html(include_str!("../static/wang/index.html")) }))
+        .route("/wang/demo", get(|| async { Html(include_str!("../static/wang/demo.html")) }))
+        .route("/wang/demo.html", get(|| async { Html(include_str!("../static/wang/demo.html")) }))
+        // 保留旧的 demo.html 路径的兼容性
+        .route("/demo.html", get(|| async { Html(include_str!("../static/wang/demo.html")) }))
+        // 管理 API - 用户增删改查
+        .route("/api/wang/users", get(admin::list_users))
+        .route("/api/wang/users/{id}", get(admin::get_user).put(admin::update_user).delete(admin::delete_user))
+        .route("/api/wang/users/{id}/reset-password", post(admin::reset_user_password))
+        // 管理 API - 数据迁移
+        .route("/api/wang/migrate", post(migrate::migrate_from_vaultwarden)
+            .layer(DefaultBodyLimit::max(50 * 1024 * 1024)))
         // Identity/Auth routes
         .route("/identity/accounts/prelogin", post(accounts::prelogin))
         .route("/api/accounts/prelogin", post(accounts::prelogin))
