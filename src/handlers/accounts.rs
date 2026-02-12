@@ -198,13 +198,15 @@ pub async fn register(
     }
 
     // Check allowed emails with glob pattern matching (e.g. "*@example.com")
+    // If ALLOWED_EMAILS is not configured, allow all emails by default.
     let allowed_emails = env
         .secret("ALLOWED_EMAILS")
-        .map_err(|_| AppError::Internal)?;
-    let allowed_emails = allowed_emails
-        .as_ref()
-        .as_string()
-        .ok_or_else(|| AppError::Internal)?;
+        .ok()
+        .and_then(|s| {
+            let val = s.to_string();
+            if val.trim().is_empty() { None } else { Some(val) }
+        })
+        .unwrap_or_else(|| "*".to_string());
     if !allowed_emails
         .split(',')
         .any(|pattern| glob_match(pattern.trim(), &payload.email))

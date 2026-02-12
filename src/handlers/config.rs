@@ -9,8 +9,8 @@ use crate::BaseUrl;
 fn get_disable_user_registration(env: &Env) -> bool {
     env.var("DISABLE_USER_REGISTRATION")
         .ok()
-        .map(|v| v.to_string().to_lowercase() != "false")
-        .unwrap_or(true)
+        .map(|v| matches!(v.to_string().to_lowercase().as_str(), "true" | "1" | "yes"))
+        .unwrap_or(false)
 }
 
 #[worker::send]
