@@ -1,35 +1,24 @@
-{
-  // Worker 基本信息
-  "name": "warden-worker",
-  "main": "build/index.js",
-  "compatibility_date": "2025-09-19",
+# Worker 基本信息
+name = "warden-worker"
+main = "build/index.js"
+compatibility_date = "2025-09-19"
 
+# D1 数据库绑定（必须完整，否则会被认为是新建/覆盖）
+[[d1_databases]]
+binding = "vault1"
+database_id = "897b6fd9-e611-437e-9c7f-703d3674ea1f"
 
-  // D1 数据库绑定（必须完整，否则会被认为是新建/覆盖）
-  "d1_databases": [
-    {
-      "binding": "vault1",
-      "database_id": "897b6fd9-e611-437e-9c7f-703d3674ea1f"
-    }
-  ],
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
 
-  "observability": {
-    "logs": {
-      "enabled": true,
-      "head_sampling_rate": 1,
-      "invocation_logs": true,
-      "persist": true
-    }
-  },
+# 构建配置
+[build]
+command = "worker-build --release"
 
-  // 构建配置（等价于 [build]）
-  "build": {
-    "command": "worker-build --release"
-  },
-
-  "assets": {
-    "directory": "./static/web-vault",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/identity/*", "/sends/*", "/demo.html"]
-  }
-}
+[assets]
+directory = "./static/web-vault"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/identity/*", "/sends/*", "/demo.html"]

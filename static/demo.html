@@ -70,7 +70,37 @@
             这是一个运行在 Cloudflare Workers 上的 Bitwarden 兼容服务器。<br>
             您可以使用官方 Bitwarden 客户端连接到此服务器。
         </p>
-        
+
+        <!-- 登录区域 -->
+        <div id="loginSection">
+            <div class="warning">
+                <strong>请先登录</strong><br>
+                使用您的 Bitwarden 账户登录后才能使用管理功能。<br><br>
+                <div style="margin-top: 0.75rem;">
+                    <div style="margin-bottom: 0.4rem; font-weight: 600;">邮箱</div>
+                    <input id="loginEmail" type="text" placeholder="user@example.com" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #ddd; box-sizing: border-box;">
+                </div>
+                <div style="margin-top: 0.75rem;">
+                    <div style="margin-bottom: 0.4rem; font-weight: 600;">主密码</div>
+                    <input id="loginPassword" type="password" placeholder="主密码" style="width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid #ddd; box-sizing: border-box;">
+                </div>
+                <div style="margin-top: 0.75rem;">
+                    <a class="btn" href="#" id="loginBtn">登录</a>
+                </div>
+                <div id="loginResult" style="margin-top: 0.75rem; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;"></div>
+            </div>
+        </div>
+
+        <!-- 已登录状态栏 -->
+        <div id="loggedInBar" style="display: none; margin-bottom: 1rem; padding: 0.75rem; background: #e8f5e9; border-radius: 6px; text-align: left;">
+            <span id="loggedInInfo" style="font-weight: 500; color: #2e7d32;"></span>
+            <a class="btn" href="#" id="logoutBtn" style="float: right; padding: 0.3rem 1rem; font-size: 0.85rem; background-color: #777;">退出登录</a>
+            <div style="clear: both;"></div>
+        </div>
+
+        <!-- 功能区域（登录后才显示） -->
+        <div id="mainSection" style="display: none;">
+
         <div class="warning">
             <strong>关于修改主密码</strong><br>
             Bitwarden/Vaultwarden 的“网页端改主密码”本质是：明文密码只在浏览器里参与计算，服务端只接收派生出的 Hash 和新的受保护主密钥。<br>
@@ -168,13 +198,28 @@
             </div>
             <div id="resultUsage" style="margin-top: 0.75rem; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;"></div>
         </div>
-        
+        </div>
+
         <div class="footer">
             Powered by Warden Worker
         </div>
     </div>
 
     <script>
+        // 登录状态管理
+        let globalAccessToken = null;
+        let loggedInEmail = null;
+
+        const loginSection = document.getElementById('loginSection');
+        const mainSection = document.getElementById('mainSection');
+        const loggedInBar = document.getElementById('loggedInBar');
+        const loggedInInfo = document.getElementById('loggedInInfo');
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const loginEmailInput = document.getElementById('loginEmail');
+        const loginPasswordInput = document.getElementById('loginPassword');
+        const loginResultEl = document.getElementById('loginResult');
+
         const submitBtn = document.getElementById('submit');
         const submitEmailBtn = document.getElementById('submitEmail');
         const emailInput = document.getElementById('email');
@@ -398,6 +443,56 @@
             }
             return JSON.parse(tokenText);
         }
+
+        function showLoggedIn(email) {
+            loggedInEmail = email;
+            loginSection.style.display = 'none';
+            mainSection.style.display = 'block';
+            loggedInBar.style.display = 'block';
+            loggedInInfo.textContent = '已登录：' + email;
+        }
+
+        function showLoggedOut() {
+            globalAccessToken = null;
+            loggedInEmail = null;
+            loginSection.style.display = 'block';
+            mainSection.style.display = 'none';
+            loggedInBar.style.display = 'none';
+            loginResultEl.textContent = '';
+            loginEmailInput.value = '';
+            loginPasswordInput.value = '';
+        }
+
+        loginBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            loginResultEl.textContent = '';
+
+            try {
+                const email = loginEmailInput.value.trim();
+                const password = loginPasswordInput.value;
+
+                if (!email || !password) {
+                    loginResultEl.textContent = '请填写邮箱和主密码';
+                    return;
+                }
+
+                loginResultEl.textContent = '正在登录...';
+                const kdfIterations = await prelogin(email);
+                const masterKey = await deriveMasterKey(email, password, kdfIterations);
+                const masterPasswordHash = await deriveMasterPasswordHash(masterKey, password);
+                const tokenJson = await login(email, masterPasswordHash);
+                globalAccessToken = tokenJson.access_token;
+
+                showLoggedIn(email);
+            } catch (err) {
+                loginResultEl.textContent = String(err);
+            }
+        });
+
+        logoutBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            showLoggedOut();
+        });
 
         submitBtn.addEventListener('click', async (e) => {
             e.preventDefault();
@@ -668,7 +763,11 @@
 
             try {
                 resultUsageEl.textContent = '加载中...';
-                const resp = await fetch('/api/d1/usage');
+                const headers = {};
+                if (globalAccessToken) {
+                    headers['Authorization'] = `Bearer ${globalAccessToken}`;
+                }
+                const resp = await fetch('/api/d1/usage', { headers });
                 const text = await resp.text();
                 if (!resp.ok) {
                     resultUsageEl.textContent = `请求失败 HTTP ${resp.status}\n${text}`;
