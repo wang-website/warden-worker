@@ -6,31 +6,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 use worker::{query, Env};
 
-use crate::{auth::Claims, db, error::AppError};
-
-/// 管理员权限验证
-async fn verify_admin(env: &Env, claims: &Claims) -> Result<(), AppError> {
-    let admin_emails = env
-        .var("ADMIN_EMAILS")
-        .ok()
-        .map(|v| v.to_string())
-        .or_else(|| {
-            env.secret("ALLOWED_EMAILS")
-                .ok()
-                .and_then(|s| s.as_ref().as_string())
-        })
-        .unwrap_or_default();
-
-    let is_admin = admin_emails
-        .split(',')
-        .any(|email| email.trim().eq_ignore_ascii_case(&claims.email));
-
-    if !is_admin {
-        return Err(AppError::Unauthorized("需要管理员权限".to_string()));
-    }
-
-    Ok(())
-}
+use crate::{auth::Claims, db, error::AppError, handlers::verify_admin};
 
 /// vaultwarden 用户数据（前端从 SQLite 读取后发送）
 #[derive(Debug, Deserialize)]
@@ -148,7 +124,7 @@ pub async fn migrate_from_vaultwarden(
     State(env): State<Arc<Env>>,
     Json(payload): Json<MigrateRequest>,
 ) -> Result<Json<MigrateResult>, AppError> {
-    verify_admin(&env, &claims).await?;
+    verify_admin(&env, &claims)?;
 
     let db = db::get_db(&env)?;
     let mut result = MigrateResult {

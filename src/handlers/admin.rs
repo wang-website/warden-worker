@@ -11,35 +11,8 @@ use crate::{
     crypto::{generate_salt, hash_password_for_storage},
     db,
     error::AppError,
-    handlers::server_password_iterations,
+    handlers::{server_password_iterations, verify_admin},
 };
-
-/// 管理员权限验证：检查当前用户邮箱是否在 ADMIN_EMAILS 列表中
-async fn verify_admin(env: &Env, claims: &Claims) -> Result<(), AppError> {
-    let admin_emails = env
-        .var("ADMIN_EMAILS")
-        .ok()
-        .map(|v| v.to_string())
-        .or_else(|| {
-            // 回退到 ALLOWED_EMAILS 作为管理员列表
-            env.secret("ALLOWED_EMAILS")
-                .ok()
-                .and_then(|s| s.as_ref().as_string())
-        })
-        .unwrap_or_default();
-
-    let is_admin = admin_emails
-        .split(',')
-        .any(|email| email.trim().eq_ignore_ascii_case(&claims.email));
-
-    if !is_admin {
-        return Err(AppError::Unauthorized(
-            "需要管理员权限".to_string(),
-        ));
-    }
-
-    Ok(())
-}
 
 /// GET /api/wang/users - 获取所有用户列表
 #[worker::send]
@@ -47,7 +20,7 @@ pub async fn list_users(
     claims: Claims,
     State(env): State<Arc<Env>>,
 ) -> Result<Json<Value>, AppError> {
-    verify_admin(&env, &claims).await?;
+    verify_admin(&env, &claims)?;
 
     let db = db::get_db(&env)?;
 
@@ -119,7 +92,7 @@ pub async fn get_user(
     State(env): State<Arc<Env>>,
     axum::extract::Path(user_id): axum::extract::Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    verify_admin(&env, &claims).await?;
+    verify_admin(&env, &claims)?;
 
     let db = db::get_db(&env)?;
 
@@ -193,7 +166,7 @@ pub async fn update_user(
     axum::extract::Path(user_id): axum::extract::Path<String>,
     Json(payload): Json<UpdateUserRequest>,
 ) -> Result<Json<Value>, AppError> {
-    verify_admin(&env, &claims).await?;
+    verify_admin(&env, &claims)?;
 
     let db = db::get_db(&env)?;
 
@@ -273,7 +246,7 @@ pub async fn delete_user(
     State(env): State<Arc<Env>>,
     axum::extract::Path(user_id): axum::extract::Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    verify_admin(&env, &claims).await?;
+    verify_admin(&env, &claims)?;
 
     let db = db::get_db(&env)?;
 
@@ -331,7 +304,7 @@ pub async fn reset_user_password(
     axum::extract::Path(user_id): axum::extract::Path<String>,
     Json(payload): Json<AdminResetPasswordRequest>,
 ) -> Result<Json<Value>, AppError> {
-    verify_admin(&env, &claims).await?;
+    verify_admin(&env, &claims)?;
 
     let db = db::get_db(&env)?;
 

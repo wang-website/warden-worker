@@ -75,3 +75,35 @@ pub(crate) async fn two_factor_enabled(
 ) -> Result<bool, crate::error::AppError> {
     crate::two_factor::is_authenticator_enabled(db, user_id).await
 }
+
+/// 管理员权限验证（共享函数）。
+///
+/// 检查当前登录用户的邮箱是否匹配 `ADMIN_EMAIL` 环境变量中配置的管理员邮箱。
+/// 仅完全匹配（不区分大小写）的单个邮箱才被视为管理员。
+///
+/// # 环境变量
+/// - `ADMIN_EMAIL`：管理员邮箱地址（必须配置，仅支持一个邮箱）
+pub(crate) fn verify_admin(
+    env: &worker::Env,
+    claims: &crate::auth::Claims,
+) -> Result<(), crate::error::AppError> {
+    let admin_email = env
+        .var("ADMIN_EMAIL")
+        .ok()
+        .map(|v| v.to_string())
+        .unwrap_or_default();
+
+    if admin_email.is_empty() {
+        return Err(crate::error::AppError::Unauthorized(
+            "管理员功能未启用：请在环境变量中设置 ADMIN_EMAIL".to_string(),
+        ));
+    }
+
+    if !admin_email.trim().eq_ignore_ascii_case(&claims.email) {
+        return Err(crate::error::AppError::Unauthorized(
+            "需要管理员权限".to_string(),
+        ));
+    }
+
+    Ok(())
+}
