@@ -9,8 +9,8 @@ use crate::BaseUrl;
 fn get_disable_user_registration(env: &Env) -> bool {
     env.var("DISABLE_USER_REGISTRATION")
         .ok()
-        .map(|v| v.to_string().to_lowercase() != "false")
-        .unwrap_or(true)
+        .map(|v| matches!(v.to_string().to_lowercase().as_str(), "true" | "1" | "yes"))
+        .unwrap_or(false)
 }
 
 #[worker::send]
@@ -34,7 +34,7 @@ pub async fn config(
           "vault": domain,
           "api": format!("{domain}/api"),
           "identity": format!("{domain}/identity"),
-          "notifications": format!(""),
+          "notifications": format!("{domain}/notifications"),
           "sso": format!(""),
           "cloudRegion": null,
         },
@@ -42,7 +42,11 @@ pub async fn config(
           "pushTechnology": 0,
           "vapidPublicKey": null
         },
-        "featureStates": {},
+        "featureStates": {
+            "duo-redirect": true,
+            "email-verification": true,
+            "unauth-ui-refresh": true,
+        },
         "object": "config",
     }))
 }
