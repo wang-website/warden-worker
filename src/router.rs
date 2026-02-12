@@ -48,7 +48,7 @@ pub fn api_router(env: Env) -> Router {
         )
         .route(
             "/identity/accounts/register/verification-email-clicked",
-            post(accounts::send_verification_email),
+            post(accounts::verification_email_clicked),
         )
         // Main data sync route
         .route("/api/sync", get(crate::handlers::sync::get_sync_data))

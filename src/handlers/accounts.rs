@@ -305,6 +305,12 @@ pub async fn send_verification_email() -> Result<Json<String>, AppError> {
     Ok(Json("fixed-token-to-mock".to_string()))
 }
 
+/// POST /identity/accounts/register/verification-email-clicked
+#[worker::send]
+pub async fn verification_email_clicked() -> Result<Json<Value>, AppError> {
+    Ok(Json(json!({})))
+}
+
 /// POST /api/accounts/password-hint
 #[worker::send]
 pub async fn password_hint(
