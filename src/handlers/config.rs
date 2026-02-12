@@ -34,7 +34,7 @@ pub async fn config(
           "vault": domain,
           "api": format!("{domain}/api"),
           "identity": format!("{domain}/identity"),
-          "notifications": format!(""),
+          "notifications": format!("{domain}/notifications"),
           "sso": format!(""),
           "cloudRegion": null,
         },
@@ -42,7 +42,11 @@ pub async fn config(
           "pushTechnology": 0,
           "vapidPublicKey": null
         },
-        "featureStates": {},
+        "featureStates": {
+            "duo-redirect": true,
+            "email-verification": true,
+            "unauth-ui-refresh": true,
+        },
         "object": "config",
     }))
 }

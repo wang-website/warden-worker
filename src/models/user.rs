@@ -139,12 +139,17 @@ pub struct RegisterRequest {
     pub email: String,
     pub master_password_hash: String,
     pub master_password_hint: Option<String>,
+    #[serde(alias = "key")]
     pub user_symmetric_key: String,
+    #[serde(alias = "keys")]
     pub user_asymmetric_keys: KeyData,
+    #[serde(alias = "kdfType")]
     pub kdf: i32,
     pub kdf_iterations: i32,
     pub kdf_memory: Option<i32>,
     pub kdf_parallelism: Option<i32>,
+    #[serde(default)]
+    pub email_verification_token: Option<String>,
 }
 
 // For POST /accounts/password-hint request
